@@ -6,6 +6,7 @@ use Livewire\Component;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Str;
 use App\Models\Branch;
+use App\Models\StaffProfile;
 use Illuminate\Support\Collection;
 
 class UserProfile extends Component
@@ -23,6 +24,22 @@ class UserProfile extends Component
     public string $current_password = '';
     public string $password = '';
     public string $password_confirmation = '';
+
+    public ?string $staff_employee_code = null;
+    public ?string $staff_job_title = null;
+    public ?string $staff_department = null;
+    public string $staff_employment_type = 'full_time';
+    public ?string $staff_hire_date = null;
+    public ?string $staff_date_of_birth = null;
+    public ?string $staff_gender = null;
+    public ?string $staff_national_id = null;
+    public ?string $staff_emergency_contact_name = null;
+    public ?string $staff_emergency_contact_phone = null;
+    public ?string $staff_emergency_contact_relationship = null;
+    public ?string $staff_bank_name = null;
+    public ?string $staff_bank_account_name = null;
+    public ?string $staff_bank_account_number = null;
+    public ?string $staff_address = null;
 
     /** @var array<int, array<string, mixed>> */
     public array $sessions = [];
@@ -48,6 +65,23 @@ class UserProfile extends Component
 
         // Fetch active sessions for this user
         $this->sessions = $this->fetchUserSessions($user->id);
+
+        $profile = $user->staffProfile;
+        $this->staff_employee_code = $profile?->employee_code;
+        $this->staff_job_title = $profile?->job_title;
+        $this->staff_department = $profile?->department;
+        $this->staff_employment_type = $profile?->employment_type ?: 'full_time';
+        $this->staff_hire_date = $profile?->hire_date?->toDateString();
+        $this->staff_date_of_birth = $profile?->date_of_birth?->toDateString();
+        $this->staff_gender = $profile?->gender;
+        $this->staff_national_id = $profile?->national_id;
+        $this->staff_emergency_contact_name = $profile?->emergency_contact_name;
+        $this->staff_emergency_contact_phone = $profile?->emergency_contact_phone;
+        $this->staff_emergency_contact_relationship = $profile?->emergency_contact_relationship;
+        $this->staff_bank_name = $profile?->bank_name;
+        $this->staff_bank_account_name = $profile?->bank_account_name;
+        $this->staff_bank_account_number = $profile?->bank_account_number;
+        $this->staff_address = $profile?->address;
     }
 
     private function makeInitials(string $name, string $email): string
@@ -148,10 +182,58 @@ class UserProfile extends Component
         $this->dispatch('notify', message: 'Password updated successfully.');
     }
 
+    public function updateStaffDetails(): void
+    {
+        $user = auth()->user();
+
+        if (! $user) {
+            return;
+        }
+
+        $profileId = $user->staffProfile?->id;
+
+        $this->validate([
+            'staff_employee_code' => ['nullable', 'string', 'max:100', \Illuminate\Validation\Rule::unique('staff_profiles', 'employee_code')->ignore($profileId)],
+            'staff_job_title' => 'nullable|string|max:255',
+            'staff_department' => 'nullable|string|max:255',
+            'staff_employment_type' => 'required|in:full_time,part_time,contract,intern,casual',
+            'staff_hire_date' => 'nullable|date',
+            'staff_date_of_birth' => 'nullable|date|before:today',
+            'staff_gender' => 'nullable|string|max:50',
+            'staff_national_id' => 'nullable|string|max:255',
+            'staff_emergency_contact_name' => 'nullable|string|max:255',
+            'staff_emergency_contact_phone' => 'nullable|string|max:100',
+            'staff_emergency_contact_relationship' => 'nullable|string|max:100',
+            'staff_bank_name' => 'nullable|string|max:255',
+            'staff_bank_account_name' => 'nullable|string|max:255',
+            'staff_bank_account_number' => 'nullable|string|max:100',
+            'staff_address' => 'nullable|string|max:1000',
+        ]);
+
+        StaffProfile::updateOrCreate(['user_id' => $user->id], [
+            'employee_code' => $this->staff_employee_code ?: null,
+            'job_title' => $this->staff_job_title,
+            'department' => $this->staff_department,
+            'employment_type' => $this->staff_employment_type,
+            'hire_date' => $this->staff_hire_date ?: null,
+            'date_of_birth' => $this->staff_date_of_birth ?: null,
+            'gender' => $this->staff_gender,
+            'national_id' => $this->staff_national_id,
+            'emergency_contact_name' => $this->staff_emergency_contact_name,
+            'emergency_contact_phone' => $this->staff_emergency_contact_phone,
+            'emergency_contact_relationship' => $this->staff_emergency_contact_relationship,
+            'bank_name' => $this->staff_bank_name,
+            'bank_account_name' => $this->staff_bank_account_name,
+            'bank_account_number' => $this->staff_bank_account_number,
+            'address' => $this->staff_address,
+        ]);
+
+        $this->dispatch('notify', message: 'Staff details updated successfully.');
+    }
+
     public function render()
     {
         return view('livewire.backoffice.user-profile');
     }
 }
-
 

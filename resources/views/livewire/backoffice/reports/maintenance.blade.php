@@ -5,9 +5,16 @@
                 <h2 class="text-2xl font-bold text-gray-900">Maintenance Report</h2>
                 <p class="text-sm text-gray-500">Backlog, urgency, completion speed, cost variance, and asset workload.</p>
             </div>
+            <x-reports.pdf-export-button :href="route('backoffice.reports.pdf', [
+                'report' => 'maintenance',
+                'filterBranch' => $filterBranch,
+                'filterModule' => $filterModule,
+                'dateFrom' => $dateFrom,
+                'dateTo' => $dateTo,
+            ])" />
         </div>
 
-        <div class="panel">
+        <div class="panel report-controls">
             <div class="grid grid-cols-1 gap-4 md:grid-cols-4">
                 <x-ui.input type="date" name="dateFrom" wire:model.live="dateFrom" />
                 <x-ui.input type="date" name="dateTo" wire:model.live="dateTo" />

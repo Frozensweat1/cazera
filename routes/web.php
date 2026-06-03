@@ -16,12 +16,14 @@ use App\Livewire\Backoffice\InventoryDashboard\Index as InventoryDashboardIndex;
 use App\Livewire\Backoffice\InventoryItemStocks\Index as InventoryItemStocksIndex;
 use App\Livewire\Backoffice\InventoryItems\Index as InventoryItemsIndex;
 use App\Livewire\Backoffice\InventoryLocations\Index as InventoryLocationsIndex;
+use App\Livewire\Backoffice\InventoryPurchaseOrderRequests\Index as InventoryPurchaseOrderRequestsIndex;
 use App\Livewire\Backoffice\InventoryStockAdjustments\Index as InventoryStockAdjustmentsIndex;
 use App\Livewire\Backoffice\InventoryStockMovements\Index as InventoryStockMovementsIndex;
 use App\Livewire\Backoffice\InventoryStockTransfers\Index as InventoryStockTransfersIndex;
 use App\Livewire\Backoffice\Logs\ActivityLogs;
 use App\Livewire\Backoffice\Logs\AuditLogs;
 use App\Livewire\Backoffice\MenuItemAdjustments\Index as MenuItemAdjustmentsIndex;
+use App\Livewire\Backoffice\MenuItemStockRequests\Index as MenuItemStockRequestsIndex;
 use App\Livewire\Backoffice\MenuItems\Index as MenuItemsIndex;
 use App\Livewire\Backoffice\Modules\Index as ModulesIndex;
 use App\Livewire\Backoffice\ModuleStaff\Index as ModuleStaffIndex;
@@ -35,6 +37,9 @@ use App\Livewire\Backoffice\Pos\SalesIndex as PosSalesIndex;
 use App\Livewire\Backoffice\Pos\SplitPaymentsIndex as PosSplitPaymentsIndex;
 use App\Livewire\Backoffice\Pos\TransactionsIndex as PosTransactionsIndex;
 use App\Livewire\Backoffice\Suppliers\Index as SuppliersIndex;
+use App\Livewire\Backoffice\Staff\Index as StaffIndex;
+use App\Livewire\Backoffice\Taxes\Index as TaxesIndex;
+use App\Livewire\Backoffice\Discounts\Index as DiscountsIndex;
 use App\Livewire\Backoffice\Users\Index;
 use App\Livewire\Backoffice\Permissions\Index as PermissionsIndex;
 use App\Livewire\Backoffice\Roles\Index as RolesIndex;
@@ -54,6 +59,7 @@ use App\Livewire\Backoffice\Reports\FinanceReport;
 use App\Livewire\Backoffice\Reports\MaintenanceReport;
 use App\Livewire\Backoffice\Reports\ProductionCostsReport;
 use App\Livewire\Backoffice\Reports\CashRegisterReport;
+use App\Http\Controllers\Backoffice\ReportExportController;
 use App\Livewire\Website\About as WebsiteAbout;
 use App\Livewire\Website\Branches as WebsiteBranches;
 use App\Livewire\Website\BranchShow as WebsiteBranchShow;
@@ -117,6 +123,9 @@ Route::get('dashboards/analytical', DashboardAnalytical::class)
 Route::get('users', Index::class)
     ->middleware('role:Super Admin|Branch Manager')
     ->name('backoffice.users');
+Route::get('staff', StaffIndex::class)
+    ->middleware('role:Super Admin|Branch Manager')
+    ->name('backoffice.staff');
 Route::get('branches', BranchesIndex::class)
     ->middleware('role:Super Admin')
     ->name('backoffice.branches');
@@ -157,6 +166,9 @@ Route::get('menu-items', MenuItemsIndex::class)
 Route::get('menu-item-adjustments', MenuItemAdjustmentsIndex::class)
     ->middleware('role:Super Admin|Branch Manager')
     ->name('backoffice.menu-item-adjustments');
+Route::get('menu-item-stock-requests', MenuItemStockRequestsIndex::class)
+    ->middleware('role:Super Admin|Branch Manager|Inventory Manager|POS Operator')
+    ->name('backoffice.menu-item-stock-requests');
 Route::get('suppliers', SuppliersIndex::class)
     ->middleware('role:Super Admin|Branch Manager|Inventory Manager')
     ->name('backoffice.suppliers');
@@ -184,6 +196,9 @@ Route::get('stock-movements', InventoryStockMovementsIndex::class)
 Route::get('stock-transfers', InventoryStockTransfersIndex::class)
     ->middleware('role:Super Admin|Branch Manager|Inventory Manager')
     ->name('backoffice.stock-transfers');
+Route::get('purchase-order-requests', InventoryPurchaseOrderRequestsIndex::class)
+    ->middleware('role:Super Admin|Branch Manager|Inventory Manager|Accountant')
+    ->name('backoffice.purchase-order-requests');
 Route::get('daily-production-costs', DailyProductionCostsIndex::class)
     ->middleware('role:Super Admin|Branch Manager|Accountant')
     ->name('backoffice.daily-production-costs');
@@ -234,6 +249,9 @@ Route::get('reports/production-costs', ProductionCostsReport::class)
     ->name('backoffice.reports.production-costs');
 Route::get('reports/cash-register', CashRegisterReport::class)
     ->name('backoffice.reports.cash-register');
+Route::get('reports/{report}/pdf', ReportExportController::class)
+    ->whereIn('report', ['overview', 'sales', 'inventory', 'finance', 'maintenance', 'production-costs', 'cash-register'])
+    ->name('backoffice.reports.pdf');
 Route::get('logs/activity', ActivityLogs::class)
     ->middleware('role:Super Admin')
     ->name('backoffice.logs.activity');
@@ -269,6 +287,12 @@ Route::get('pos/debtors', PosDebtorsIndex::class)
 Route::get('pos/split-payments', PosSplitPaymentsIndex::class)
     ->middleware('role:Super Admin|Branch Manager|Accountant')
     ->name('backoffice.pos.split-payments');
+Route::get('pos/taxes', TaxesIndex::class)
+    ->middleware('role:Super Admin|Branch Manager|Accountant')
+    ->name('backoffice.pos.taxes');
+Route::get('pos/discounts', DiscountsIndex::class)
+    ->middleware('role:Super Admin|Branch Manager|Accountant')
+    ->name('backoffice.pos.discounts');
 
 Route::get('profile', \App\Livewire\Backoffice\UserProfile::class)
     ->name('backoffice.profile');

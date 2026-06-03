@@ -12,10 +12,10 @@
 
     $activeDropdown = match (true) {
         request()->routeIs('dashboard', 'backoffice.dashboards.*') => 'dashboard',
-        request()->routeIs('backoffice.branches', 'backoffice.modules', 'backoffice.users', 'backoffice.module-staff', 'backoffice.branch-staff', 'backoffice.roles', 'backoffice.permissions') => 'administration',
+        request()->routeIs('backoffice.branches', 'backoffice.modules', 'backoffice.users', 'backoffice.staff', 'backoffice.module-staff', 'backoffice.branch-staff', 'backoffice.roles', 'backoffice.permissions') => 'administration',
         request()->routeIs('backoffice.customers', 'backoffice.customers.*') => 'customers',
-        request()->routeIs('backoffice.categories', 'backoffice.menu-items', 'backoffice.menu-item-adjustments') => 'menu_products',
-        request()->routeIs('backoffice.inventory-*', 'backoffice.stock-*', 'backoffice.suppliers') => 'inventory',
+        request()->routeIs('backoffice.categories', 'backoffice.menu-items', 'backoffice.menu-item-adjustments', 'backoffice.menu-item-stock-requests') => 'menu_products',
+        request()->routeIs('backoffice.inventory-*', 'backoffice.stock-*', 'backoffice.suppliers', 'backoffice.purchase-order-requests') => 'inventory',
         request()->routeIs('backoffice.pos', 'backoffice.pos.kitchen') => 'pos',
         request()->routeIs('backoffice.pos.*') => 'sales',
         request()->routeIs('backoffice.daily-production-costs', 'backoffice.expense-categories', 'backoffice.expenses', 'backoffice.net-revenue') => 'production',
@@ -27,7 +27,9 @@
     };
     $canSeeAdministration = auth()->user()?->isSuperAdmin() || auth()->user()?->isBranchManager();
     $canManageMenuProducts = auth()->user()?->isSuperAdmin() || auth()->user()?->isBranchManager();
+    $canAccessMenuStockRequests = auth()->user()?->hasAnyRole(['Super Admin', 'Branch Manager', 'Inventory Manager', 'POS Operator']);
     $canManageInventory = auth()->user()?->isSuperAdmin() || auth()->user()?->isBranchManager() || auth()->user()?->isInventoryManager();
+    $canAccessPurchaseOrderRequests = auth()->user()?->hasAnyRole(['Super Admin', 'Branch Manager', 'Inventory Manager', 'Accountant']);
     $canAccessPos = auth()->user()?->hasAnyRole(['Super Admin', 'Branch Manager', 'POS Operator']);
     $canAccessKitchenDisplay = auth()->user()?->hasAnyRole(['Super Admin', 'Branch Manager', 'Kitchen Staff']);
     $canAccessSalesTransactions = auth()->user()?->hasAnyRole(['Super Admin', 'Branch Manager', 'Accountant']);
@@ -155,6 +157,7 @@
                             @endif
                             <li><a href="{{ route('backoffice.modules') }}" @class(['active' => request()->routeIs('backoffice.modules')])>Manage Modules</a></li>
                             <li><a href="{{ route('backoffice.users') }}" @class(['active' => request()->routeIs('backoffice.users')])>Users</a></li>
+                            <li><a href="{{ route('backoffice.staff') }}" @class(['active' => request()->routeIs('backoffice.staff')])>Staff Details</a></li>
                             <li><a href="{{ route('backoffice.module-staff') }}" @class(['active' => request()->routeIs('backoffice.module-staff')])>Assign Modules</a></li>
                             @if (auth()->user()?->isSuperAdmin())
                                 <li><a href="{{ route('backoffice.branch-staff') }}" @class(['active' => request()->routeIs('backoffice.branch-staff')])>Assign Branches</a></li>
@@ -199,7 +202,7 @@
                     </ul>
                 </li>
 
-                @if ($canManageMenuProducts)
+                @if ($canManageMenuProducts || $canAccessMenuStockRequests)
                     {{-- Menu / Product Management --}}
                     <li class="menu nav-item">
                         <button type="button" class="nav-link group"
@@ -228,14 +231,19 @@
                         </button>
                         <ul x-cloak="" x-show="activeDropdown === 'menu_products'" x-collapse=""
                             class="sub-menu text-gray-500">
-                            <li><a href="{{ route('backoffice.categories') }}" @class(['active' => request()->routeIs('backoffice.categories')])>Categories</a></li>
-                            <li><a href="{{ route('backoffice.menu-items') }}" @class(['active' => request()->routeIs('backoffice.menu-items')])>Menu Items / Products</a></li>
-                            <li><a href="{{ route('backoffice.menu-item-adjustments') }}" @class(['active' => request()->routeIs('backoffice.menu-item-adjustments')])>Menu Item Adjustments</a></li>
+                            @if ($canManageMenuProducts)
+                                <li><a href="{{ route('backoffice.categories') }}" @class(['active' => request()->routeIs('backoffice.categories')])>Categories</a></li>
+                                <li><a href="{{ route('backoffice.menu-items') }}" @class(['active' => request()->routeIs('backoffice.menu-items')])>Menu Items / Products</a></li>
+                                <li><a href="{{ route('backoffice.menu-item-adjustments') }}" @class(['active' => request()->routeIs('backoffice.menu-item-adjustments')])>Menu Item Adjustments</a></li>
+                            @endif
+                            @if ($canAccessMenuStockRequests)
+                                <li><a href="{{ route('backoffice.menu-item-stock-requests') }}" @class(['active' => request()->routeIs('backoffice.menu-item-stock-requests')])>Menu Stock Requests</a></li>
+                            @endif
                         </ul>
                     </li>
                 @endif
 
-                @if ($canManageInventory)
+                @if ($canManageInventory || $canAccessPurchaseOrderRequests)
                     <h2
                         class="-mx-4 mb-1 flex items-center bg-white-light/30 py-3 px-7 font-extrabold uppercase dark:bg-dark dark:bg-opacity-[0.08]">
                         <svg class="hidden h-5 w-4 flex-none" viewBox="0 0 24 24" stroke="currentColor"
@@ -271,15 +279,22 @@
                         </button>
                         <ul x-cloak="" x-show="activeDropdown === 'inventory'" x-collapse=""
                             class="sub-menu text-gray-500">
-                            <li><a href="{{ route('backoffice.inventory-dashboard') }}" @class(['active' => request()->routeIs('backoffice.inventory-dashboard')])>Inventory Dashboard</a></li>
-                            <li><a href="{{ route('backoffice.inventory-categories') }}" @class(['active' => request()->routeIs('backoffice.inventory-categories')])>Inventory Categories</a></li>
-                            <li><a href="{{ route('backoffice.inventory-locations') }}" @class(['active' => request()->routeIs('backoffice.inventory-locations')])>Inventory Locations</a></li>
-                            <li><a href="{{ route('backoffice.suppliers') }}" @class(['active' => request()->routeIs('backoffice.suppliers')])>Suppliers</a></li>
-                            <li><a href="{{ route('backoffice.inventory-items') }}" @class(['active' => request()->routeIs('backoffice.inventory-items')])>Inventory Items</a></li>
-                            <li><a href="{{ route('backoffice.inventory-item-stocks') }}" @class(['active' => request()->routeIs('backoffice.inventory-item-stocks')])>Inventory Stock</a></li>
-                            <li><a href="{{ route('backoffice.stock-adjustments') }}" @class(['active' => request()->routeIs('backoffice.stock-adjustments')])>Stock Adjustments</a></li>
-                            <li><a href="{{ route('backoffice.stock-transfers') }}" @class(['active' => request()->routeIs('backoffice.stock-transfers')])>Stock Transfers</a></li>
-                            <li><a href="{{ route('backoffice.stock-movements') }}" @class(['active' => request()->routeIs('backoffice.stock-movements')])>Stock Movements</a></li>
+                            @if ($canManageInventory)
+                                <li><a href="{{ route('backoffice.inventory-dashboard') }}" @class(['active' => request()->routeIs('backoffice.inventory-dashboard')])>Inventory Dashboard</a></li>
+                                <li><a href="{{ route('backoffice.inventory-categories') }}" @class(['active' => request()->routeIs('backoffice.inventory-categories')])>Inventory Categories</a></li>
+                                <li><a href="{{ route('backoffice.inventory-locations') }}" @class(['active' => request()->routeIs('backoffice.inventory-locations')])>Inventory Locations</a></li>
+                                <li><a href="{{ route('backoffice.suppliers') }}" @class(['active' => request()->routeIs('backoffice.suppliers')])>Suppliers</a></li>
+                            @endif
+                            @if ($canAccessPurchaseOrderRequests)
+                                <li><a href="{{ route('backoffice.purchase-order-requests') }}" @class(['active' => request()->routeIs('backoffice.purchase-order-requests')])>Purchase Requests</a></li>
+                            @endif
+                            @if ($canManageInventory)
+                                <li><a href="{{ route('backoffice.inventory-items') }}" @class(['active' => request()->routeIs('backoffice.inventory-items')])>Inventory Items</a></li>
+                                <li><a href="{{ route('backoffice.inventory-item-stocks') }}" @class(['active' => request()->routeIs('backoffice.inventory-item-stocks')])>Inventory Stock</a></li>
+                                <li><a href="{{ route('backoffice.stock-adjustments') }}" @class(['active' => request()->routeIs('backoffice.stock-adjustments')])>Stock Adjustments</a></li>
+                                <li><a href="{{ route('backoffice.stock-transfers') }}" @class(['active' => request()->routeIs('backoffice.stock-transfers')])>Stock Transfers</a></li>
+                                <li><a href="{{ route('backoffice.stock-movements') }}" @class(['active' => request()->routeIs('backoffice.stock-movements')])>Stock Movements</a></li>
+                            @endif
                         </ul>
                     </li>
                 @endif
@@ -366,6 +381,8 @@
                                 <li><a href="{{ route('backoffice.pos.refunds') }}" @class(['active' => request()->routeIs('backoffice.pos.refunds')])>Refunds &amp; Returns</a></li>
                                 <li><a href="{{ route('backoffice.pos.debtors') }}" @class(['active' => request()->routeIs('backoffice.pos.debtors')])>Debtors</a></li>
                                 <li><a href="{{ route('backoffice.pos.split-payments') }}" @class(['active' => request()->routeIs('backoffice.pos.split-payments')])>Split Payments</a></li>
+                                <li><a href="{{ route('backoffice.pos.taxes') }}" @class(['active' => request()->routeIs('backoffice.pos.taxes')])>Taxes</a></li>
+                                <li><a href="{{ route('backoffice.pos.discounts') }}" @class(['active' => request()->routeIs('backoffice.pos.discounts')])>Discounts</a></li>
                             </ul>
                         </li>
                     @endif

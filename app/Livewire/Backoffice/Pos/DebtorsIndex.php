@@ -37,6 +37,7 @@ class DebtorsIndex extends Component
             'debtors' => Sale::with(['customer', 'branch', 'module', 'creator'])
                 ->accessible()
                 ->where('is_debt', true)
+                ->where('status', '!=', 'refunded')
                 ->when($branchId, fn($query) => $query->where('branch_id', $branchId))
                 ->when($this->filterBranch, fn($query) => $query->where('branch_id', $this->filterBranch))
                 ->when($this->filterModule, fn($query) => $query->where('module_id', $this->filterModule))
@@ -56,6 +57,7 @@ class DebtorsIndex extends Component
     {
         $sale = Sale::accessible()
             ->where('is_debt', true)
+            ->where('status', '!=', 'refunded')
             ->findOrFail($saleId);
 
         abort_if((float) $sale->remaining_balance <= 0, 422, 'This sale has no outstanding balance.');
@@ -80,6 +82,7 @@ class DebtorsIndex extends Component
         DB::transaction(function () {
             $sale = Sale::accessible()
                 ->where('is_debt', true)
+                ->where('status', '!=', 'refunded')
                 ->lockForUpdate()
                 ->findOrFail($this->paymentSaleId);
             $amount = round((float) $this->payment_amount, 2);
@@ -96,7 +99,7 @@ class DebtorsIndex extends Component
                 'paid_amount' => $paid,
                 'remaining_balance' => max(0, $remaining),
                 'is_debt' => $remaining > 0,
-                'status' => $remaining <= 0 && $sale->status === 'pending' ? 'completed' : $sale->status,
+                'status' => $remaining <= 0 ? 'completed' : $sale->status,
                 'completed_at' => $remaining <= 0 ? now() : $sale->completed_at,
             ]);
         });

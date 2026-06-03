@@ -5,13 +5,17 @@
             <p class="text-sm text-gray-500">Live operational reporting for sales, inventory, finance, maintenance and
                 customer performance.</p>
         </div>
-        <div class="flex flex-wrap gap-2">
+        <div class="report-print-hidden flex flex-wrap items-center gap-2">
             <x-ui.select label="Branch" name="filterBranch" wire:model.live="filterBranch">
                 <option value="">All Branches</option>
                 @foreach ($branches as $branch)
                     <option value="{{ $branch->id }}">{{ $branch->name }}</option>
                 @endforeach
             </x-ui.select>
+            <x-reports.pdf-export-button :href="route('backoffice.reports.pdf', [
+                'report' => 'overview',
+                'filterBranch' => $filterBranch,
+            ])" class="w-full sm:w-auto" />
         </div>
     </div>
 

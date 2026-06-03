@@ -23,20 +23,31 @@ class KitchenIndex extends Component
     public function render()
     {
         $branchId = session('branch_id');
+        $selectedBranchId = $this->filterBranch ?: $branchId;
 
-        $saleItems = SaleItem::with(['sale.customer', 'menuItem'])
+        $kitchenItemScope = function ($query) {
+            $query->where('is_kitchen_notified', true)
+                ->when(!$this->showCompleted, fn($query) => $query->where('kitchen_status', '!=', 'completed'))
+                ->when($this->filterModule, fn($query) => $query->where('module_id', $this->filterModule))
+                ->when($this->filterStatus, fn($query) => $query->where('kitchen_status', $this->filterStatus));
+        };
+
+        $kitchenOrders = Sale::with([
+                'customer',
+                'branch',
+                'module',
+                'items' => fn($query) => $kitchenItemScope($query->with('menuItem')->oldest('created_at')),
+            ])
             ->accessible()
-            ->where('is_kitchen_notified', true)
-            ->when(!$this->showCompleted, fn($query) => $query->where('kitchen_status', '!=', 'completed'))
-            ->when($branchId, fn($query) => $query->where('branch_id', $branchId))
+            ->whereHas('items', $kitchenItemScope)
+            ->when($selectedBranchId, fn($query) => $query->where('branch_id', $selectedBranchId))
             ->when($this->filterBranch, fn($query) => $query->where('branch_id', $this->filterBranch))
             ->when($this->filterModule, fn($query) => $query->where('module_id', $this->filterModule))
-            ->when($this->filterStatus, fn($query) => $query->where('kitchen_status', $this->filterStatus))
-            ->oldest('created_at')
-            ->paginate(20);
+            ->oldest('sale_date')
+            ->paginate(12);
 
         return view('livewire.backoffice.pos.kitchen-index', [
-            'saleItems' => $saleItems,
+            'kitchenOrders' => $kitchenOrders,
             'branches' => $this->accessibleBranches(),
             'modules' => $this->accessibleModules($this->filterBranch ?: $branchId ?: null),
         ]);
@@ -135,6 +146,46 @@ class KitchenIndex extends Component
         return $hours > 0
             ? sprintf('%02d:%02d:%02d', $hours, $minutes, $remainingSeconds)
             : sprintf('%02d:%02d', $minutes, $remainingSeconds);
+    }
+
+    public function formatOrderWaitTime(Sale $sale): string
+    {
+        $firstItemTime = $sale->items->min('created_at') ?: $sale->sale_date ?: $sale->created_at;
+        $seconds = max(0, (int) $firstItemTime?->diffInSeconds(now()));
+        $hours = intdiv($seconds, 3600);
+        $minutes = intdiv($seconds % 3600, 60);
+        $remainingSeconds = $seconds % 60;
+
+        return $hours > 0
+            ? sprintf('%02d:%02d:%02d', $hours, $minutes, $remainingSeconds)
+            : sprintf('%02d:%02d', $minutes, $remainingSeconds);
+    }
+
+    public function orderKitchenStatus(Sale $sale): string
+    {
+        $statuses = $sale->items->pluck('kitchen_status')->unique()->values();
+
+        if ($statuses->isEmpty()) {
+            return 'queued';
+        }
+
+        if ($statuses->count() === 1) {
+            return (string) $statuses->first();
+        }
+
+        if ($statuses->contains('cooking')) {
+            return 'cooking';
+        }
+
+        if ($statuses->contains('ready')) {
+            return 'ready';
+        }
+
+        if ($statuses->contains('queued') || $statuses->contains('pending')) {
+            return 'queued';
+        }
+
+        return 'mixed';
     }
 
     public function menuItemImageUrl(SaleItem $item): ?string

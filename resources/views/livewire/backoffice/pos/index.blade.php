@@ -143,15 +143,22 @@
                                             @php
                                                 $moduleCart = collect($this->cart[$module->id] ?? []);
                                                 $subtotal = $moduleCart->sum('subtotal');
-                                                $taxRate = data_get($module->pos_settings, 'tax_rate', 0) / 100;
+                                                $moduleTaxes = $taxesByModule[$module->id] ?? collect();
+                                                $moduleDiscounts = $discountsByModule[$module->id] ?? collect();
+                                                $taxRate = $moduleTaxes->sum('rate_percent') / 100;
                                                 $serviceChargeRate =
                                                     data_get($module->pos_settings, 'service_charge', 0) / 100;
-                                                $tax = round($subtotal * $taxRate, 2);
                                                 $serviceCharge = round($subtotal * $serviceChargeRate, 2);
-                                                $total = round($subtotal + $tax + $serviceCharge - $discount, 2);
-                                                    $paidPreview = collect($splitPayments)
-                                                        ->filter(fn($payment) => ($payment['method'] ?? 'cash') !== 'credit_sale')
-                                                        ->sum(fn($payment) => (float) ($payment['amount'] ?? 0));
+                                                $billBeforeDiscount = round($subtotal + $serviceCharge, 2);
+                                                $tax = round($billBeforeDiscount * $taxRate, 2);
+                                                $selectedDiscount = $moduleDiscounts->firstWhere('id', (int) $discount_id);
+                                                $discountAmount = $selectedDiscount
+                                                    ? $selectedDiscount->calculateFor($billBeforeDiscount)
+                                                    : 0;
+                                                $total = round(max(0, $billBeforeDiscount - $discountAmount), 2);
+                                                $paidPreview = collect($splitPayments)
+                                                    ->filter(fn($payment) => ($payment['method'] ?? 'cash') !== 'credit_sale')
+                                                    ->sum(fn($payment) => (float) ($payment['amount'] ?? 0));
                                                 $remaining = round(max($total - $paidPreview, 0), 2);
                                             @endphp
 
@@ -213,7 +220,7 @@
                                                     </div>
                                                     <div class="flex justify-between text-sm text-gray-600">
                                                         <span>Discount</span>
-                                                        <span>{{ number_format($discount, 2) }}</span>
+                                                        <span>{{ number_format($discountAmount, 2) }}</span>
                                                     </div>
                                                     <div class="flex justify-between text-base font-semibold">
                                                         <span>Total</span>
@@ -243,6 +250,29 @@
                                                         </x-ui.select>
                                                         <x-ui.checkbox label="Send order to kitchen"
                                                             name="notifyKitchen" wire:model="notifyKitchen" />
+                                                        <x-ui.select label="Discount" name="discount_id"
+                                                            wire:model.live="discount_id">
+                                                            <option value="">No discount</option>
+                                                            @foreach ($moduleDiscounts as $discountOption)
+                                                                <option value="{{ $discountOption->id }}">
+                                                                    {{ $discountOption->name }}
+                                                                    ({{ $discountOption->type === 'percentage' ? number_format($discountOption->value, 2) . '%' : number_format($discountOption->value, 2) }})
+                                                                </option>
+                                                            @endforeach
+                                                        </x-ui.select>
+                                                        @if ($moduleTaxes->isNotEmpty())
+                                                            <div class="rounded-lg border border-slate-200 bg-white p-3 text-xs text-gray-500">
+                                                                <p class="font-bold uppercase text-gray-600">Taxes</p>
+                                                                <div class="mt-2 space-y-1">
+                                                                    @foreach ($moduleTaxes as $taxOption)
+                                                                        <div class="flex justify-between gap-3">
+                                                                            <span>{{ $taxOption->name }}</span>
+                                                                            <span>{{ number_format($taxOption->rate_percent, 2) }}%</span>
+                                                                        </div>
+                                                                    @endforeach
+                                                                </div>
+                                                            </div>
+                                                        @endif
                                                         <x-ui.input label="Notes" name="notes"
                                                             wire:model="notes" />
                                                     </div>
@@ -333,6 +363,8 @@
                                 <th>Customer</th>
                                 <th>Module</th>
                                 <th>Total</th>
+                                <th>Balance</th>
+                                <th>Last Payment</th>
                                 <th>Status</th>
                                 <th>Date</th>
                                 <th class="text-center">Actions</th>
@@ -345,16 +377,42 @@
                                     <td>{{ $sale->customer?->name ?? 'Walk-in' }}</td>
                                     <td>{{ $sale->module?->name }}</td>
                                     <td>{{ number_format($sale->total, 2) }}</td>
+                                    <td>
+                                        @if ((float) $sale->remaining_balance > 0)
+                                            <span class="font-semibold text-danger">{{ number_format($sale->remaining_balance, 2) }}</span>
+                                        @else
+                                            <span class="text-success">Paid</span>
+                                        @endif
+                                    </td>
+                                    <td>
+                                        @if ($sale->is_debt && $sale->latestPayment)
+                                            <div class="text-sm">
+                                                <p class="font-semibold">{{ number_format($sale->latestPayment->amount, 2) }}</p>
+                                                <p class="text-xs text-gray-500">
+                                                    {{ str($sale->latestPayment->method)->replace('_', ' ')->headline() }}
+                                                    {{ $sale->latestPayment->paid_at ? ' / ' . $sale->latestPayment->paid_at->format('M d, h:i A') : '' }}
+                                                </p>
+                                            </div>
+                                        @elseif ($sale->is_debt)
+                                            <span class="text-xs text-gray-500">No payment yet</span>
+                                        @else
+                                            <span class="text-xs text-gray-500">Fully paid</span>
+                                        @endif
+                                    </td>
                                     <td>{{ ucfirst($sale->status) }}</td>
                                     <td>{{ $sale->sale_date?->format('Y-m-d H:i') }}</td>
                                     <td class="text-center">
+                                        @if ((float) $sale->remaining_balance > 0)
+                                            <x-ui.button type="button" size="sm" variant="success"
+                                                wire:click="openRecentPayment({{ $sale->id }})" icon="banknotes">Pay</x-ui.button>
+                                        @endif
                                         <x-ui.button type="button" size="sm" variant="secondary"
                                             wire:click="viewReceipt({{ $sale->id }})" icon="eye">View</x-ui.button>
                                     </td>
                                 </tr>
                             @empty
                                 <tr>
-                                    <td colspan="7" class="text-center py-10 text-gray-500">No sales yet.</td>
+                                    <td colspan="9" class="text-center py-10 text-gray-500">No sales yet.</td>
                                 </tr>
                             @endforelse
                         </tbody>
@@ -390,6 +448,7 @@
                                 .space-y-5 > * + * { margin-top: 20px; }
                                 .flex { display: flex; }
                                 .justify-between { justify-content: space-between; }
+                                .receipt-shell img { display: block; max-width: 64px; max-height: 64px; margin: 0 auto 10px; object-fit: contain; }
                             </style>
                         </head>
                         <body>
@@ -402,12 +461,62 @@
                 setTimeout(() => printWindow.print(), 250);
             }
         }">
+        <x-ui.modal name="recent-sale-payment-modal" maxWidth="xl">
+            <x-slot:title>Record Sale Payment</x-slot:title>
+
+            @if ($recentPaymentSale)
+                <div class="space-y-5">
+                    <div class="rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+                        <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                            <div>
+                                <p class="font-semibold text-emerald-950">{{ $recentPaymentSale->sale_number }}</p>
+                                <p class="text-sm text-emerald-700">{{ $recentPaymentSale->customer?->name ?? 'Walk-in Customer' }}</p>
+                                <p class="text-xs text-emerald-700">{{ $recentPaymentSale->branch?->name }}{{ $recentPaymentSale->module ? ' / ' . $recentPaymentSale->module->name : '' }}</p>
+                            </div>
+                            <div class="text-left sm:text-right">
+                                <p class="text-xs uppercase tracking-wide text-emerald-700">Outstanding</p>
+                                <p class="text-xl font-extrabold text-emerald-950">{{ number_format($recentPaymentSale->remaining_balance, 2) }}</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
+                        <x-ui.select label="Method" name="recent_payment_method" wire:model="recent_payment_method">
+                            <option value="cash">Cash</option>
+                            <option value="card">Card</option>
+                            <option value="mobile_money">Mobile money</option>
+                            <option value="bank_transfer">Bank transfer</option>
+                            <option value="wallet">Wallet</option>
+                        </x-ui.select>
+                        <x-ui.input label="Amount" type="number" name="recent_payment_amount" wire:model="recent_payment_amount" min="0.01" step="0.01" />
+                        <x-ui.input label="Reference" name="recent_payment_reference" wire:model="recent_payment_reference" placeholder="Optional" />
+                    </div>
+                </div>
+            @endif
+
+            <x-slot:footer>
+                <div class="flex justify-end gap-3">
+                    <x-ui.button type="button" variant="outline-danger" x-on:click="$dispatch('close-modal', 'recent-sale-payment-modal')">
+                        Cancel
+                    </x-ui.button>
+                    <x-ui.button type="button" wire:click="recordRecentPayment" wire:target="recordRecentPayment" wire:loading.attr="disabled" icon="check">
+                        <span wire:loading.remove wire:target="recordRecentPayment">Save Payment</span>
+                        <span wire:loading wire:target="recordRecentPayment">Saving...</span>
+                    </x-ui.button>
+                </div>
+            </x-slot:footer>
+        </x-ui.modal>
+
         <x-ui.modal name="pos-receipt-modal" maxWidth="2xl">
             <x-slot:title>Sale Receipt</x-slot:title>
 
             @if ($receiptSale)
                 <div id="pos-receipt-print-area" class="space-y-5">
                     <div class="border-b border-dashed border-slate-300 pb-4 text-center">
+                        @if ($receiptSettings['logo'])
+                            <img src="{{ $receiptSettings['logo'] }}" alt="{{ $receiptSettings['business_name'] }} logo"
+                                class="mx-auto mb-3 h-16 max-w-[5rem] object-contain">
+                        @endif
                         <h2 class="text-xl font-extrabold">{{ $receiptSettings['business_name'] }}</h2>
                         @if ($receiptSettings['tagline'])
                             <p class="text-sm text-gray-500">{{ $receiptSettings['tagline'] }}</p>
@@ -462,7 +571,20 @@
 
                     <div class="space-y-2 border-b border-dashed border-slate-300 pb-4 text-sm">
                         <div class="flex justify-between"><span>Subtotal</span><span>{{ number_format($receiptSale->subtotal, 2) }}</span></div>
-                        <div class="flex justify-between"><span>Tax</span><span>{{ number_format($receiptSale->tax, 2) }}</span></div>
+                        @forelse ($receiptTaxes as $taxLine)
+                            <div class="flex justify-between">
+                                <span>
+                                    {{ $taxLine['name'] }}
+                                    @if ($taxLine['rate'] !== null)
+                                        ({{ number_format($taxLine['rate'], 2) }}%)
+                                    @endif
+                                </span>
+                                <span>{{ number_format($taxLine['amount'], 2) }}</span>
+                            </div>
+                        @empty
+                            <div class="flex justify-between"><span>Tax</span><span>{{ number_format($receiptSale->tax, 2) }}</span></div>
+                        @endforelse
+                        <div class="flex justify-between font-semibold"><span>Total Tax</span><span>{{ number_format($receiptSale->tax, 2) }}</span></div>
                         <div class="flex justify-between"><span>Service Charge</span><span>{{ number_format($receiptSale->service_charge, 2) }}</span></div>
                         <div class="flex justify-between"><span>Discount</span><span>{{ number_format($receiptSale->discount, 2) }}</span></div>
                         <div class="flex justify-between text-base font-extrabold"><span>Total</span><span>{{ number_format($receiptSale->total, 2) }}</span></div>

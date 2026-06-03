@@ -66,6 +66,8 @@ class InventoryReport extends Component
             'branches' => $this->accessibleBranches(),
             'modules' => $this->accessibleModules($branchId ?: null),
             'branchId' => $branchId,
+            'filterBranch' => $this->filterBranch,
+            'filterModule' => $this->filterModule,
             'totalItems' => $totalItems,
             'activeItems' => $activeItems,
             'inactiveItems' => $inactiveItems,

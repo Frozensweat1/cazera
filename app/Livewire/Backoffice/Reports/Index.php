@@ -170,6 +170,7 @@ class Index extends Component
         return view('livewire.backoffice.reports.index', [
             'branches' => $this->accessibleBranches(),
             'branchId' => $branchId,
+            'filterBranch' => $this->filterBranch,
             'totalSales' => $totalSales,
             'totalRevenue' => $totalRevenue,
             'averageOrderValue' => $averageOrderValue,

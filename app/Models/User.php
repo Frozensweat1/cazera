@@ -65,6 +65,11 @@ class User extends Authenticatable
         return $this->hasMany(BranchStaff::class);
     }
 
+    public function staffProfile()
+    {
+        return $this->hasOne(StaffProfile::class);
+    }
+
     public function modules()
     {
         return $this->belongsToMany(

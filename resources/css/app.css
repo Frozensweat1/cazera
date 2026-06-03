@@ -119,6 +119,65 @@
         outline-offset: 3px;
     }
 
+    .report-export-button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        min-height: 2.625rem;
+        border-radius: 0.875rem;
+        border: 1px solid #0f172a !important;
+        background: linear-gradient(135deg, #0f172a 0%, #1e293b 52%, #334155 100%) !important;
+        color: #ffffff !important;
+        padding: 0.625rem 1rem;
+        font-size: 0.875rem;
+        font-weight: 800;
+        line-height: 1.25rem;
+        box-shadow: 0 10px 22px rgba(15, 23, 42, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.14);
+        text-decoration: none !important;
+        transition: transform 150ms ease, box-shadow 150ms ease, border-color 150ms ease, filter 150ms ease;
+    }
+
+    .report-export-button svg {
+        color: #fbbf24 !important;
+        stroke: currentColor;
+    }
+
+    .report-export-button:hover {
+        border-color: #475569 !important;
+        color: #ffffff !important;
+        filter: saturate(1.08);
+        transform: translateY(-1px);
+        box-shadow: 0 14px 28px rgba(15, 23, 42, 0.24), 0 0 0 4px rgba(251, 191, 36, 0.14);
+    }
+
+    .report-export-button:active {
+        transform: translateY(0);
+        box-shadow: 0 8px 18px rgba(15, 23, 42, 0.2);
+    }
+
+    .report-export-button:focus-visible {
+        outline: 3px solid rgba(251, 191, 36, 0.45);
+        outline-offset: 3px;
+    }
+
+    .dark .report-export-button {
+        border-color: #f59e0b !important;
+        background: linear-gradient(135deg, #f59e0b 0%, #d97706 54%, #92400e 100%) !important;
+        color: #111827 !important;
+        box-shadow: 0 12px 26px rgba(245, 158, 11, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.28);
+    }
+
+    .dark .report-export-button svg {
+        color: #111827 !important;
+    }
+
+    .dark .report-export-button:hover {
+        border-color: #fbbf24 !important;
+        color: #111827 !important;
+        box-shadow: 0 16px 34px rgba(245, 158, 11, 0.28), 0 0 0 4px rgba(251, 191, 36, 0.18);
+    }
+
     .image-veil::after {
         content: "";
         position: absolute;
@@ -166,6 +225,62 @@
 }
 
 @media print {
+    @page {
+        margin: 14mm;
+        size: A4;
+    }
+
+    html,
+    body {
+        background: #ffffff !important;
+        color: #111827 !important;
+    }
+
+    .sidebar,
+    header,
+    footer,
+    .theme-customizer,
+    .report-print-hidden,
+    .scroll-to-top,
+    .preloader,
+    [data-report-actions] {
+        display: none !important;
+    }
+
+    .main-container,
+    .main-content,
+    .animate__animated {
+        display: block !important;
+        min-height: auto !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        width: 100% !important;
+        color: #111827 !important;
+        background: #ffffff !important;
+        box-shadow: none !important;
+        animation: none !important;
+        transform: none !important;
+    }
+
+    .panel,
+    .rounded-3xl,
+    .rounded-2xl,
+    .rounded-xl,
+    .rounded-lg {
+        break-inside: avoid;
+        box-shadow: none !important;
+    }
+
+    table {
+        page-break-inside: auto;
+    }
+
+    tr,
+    img,
+    svg {
+        break-inside: avoid;
+    }
+
     body.printing-pos-receipt * {
         visibility: hidden !important;
     }

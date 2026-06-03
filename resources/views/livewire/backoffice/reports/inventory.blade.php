@@ -5,9 +5,14 @@
                 <h2 class="text-2xl font-bold text-gray-900">Inventory Report</h2>
                 <p class="text-sm text-gray-500">Stock value, reorder exposure, supplier concentration, and availability risk.</p>
             </div>
+            <x-reports.pdf-export-button :href="route('backoffice.reports.pdf', [
+                'report' => 'inventory',
+                'filterBranch' => $filterBranch,
+                'filterModule' => $filterModule,
+            ])" />
         </div>
 
-        <div class="panel">
+        <div class="panel report-controls">
             <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <x-ui.select name="filterBranch" wire:model.live="filterBranch">
                     <option value="">All Branches</option>

@@ -8,6 +8,7 @@
  <link href="css2?family=Nunito:wght@400;500;600;700;800&display=swap" rel="stylesheet">
  <link rel="stylesheet" type="text/css" media="screen" href="{{ asset('assets/css/perfect-scrollbar.min.css') }}">
  <link rel="stylesheet" type="text/css" media="screen" href="{{ asset('assets/css/style.css') }}">
+ <link rel="stylesheet" type="text/css" media="screen" href="{{ asset('assets/css/backoffice-overrides.css') }}">
  <link defer="" rel="stylesheet" type="text/css" media="screen" href="{{ asset('assets/css/animate.css') }}">
  <script src="{{ asset('assets/js/perfect-scrollbar.min.js') }}"></script>
  <script src="{{ asset('assets/js/popper.min.js') }}"></script>

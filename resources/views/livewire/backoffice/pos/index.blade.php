@@ -76,62 +76,64 @@
                                         </div>
                                     </div>
 
-                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        @forelse ($menuItemsByModule[$module->id] ?? collect() as $item)
-                                            @php
-                                                $imageUrl = $this->menuItemImageUrl($item);
-                                            @endphp
-                                            <div class="panel flex gap-4 p-4">
-                                                <div
-                                                    class="h-24 w-24 flex-none overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
-                                                    @if ($imageUrl)
-                                                        <img src="{{ $imageUrl }}" alt="{{ $item->name }}"
-                                                            class="h-full w-full object-cover" loading="lazy">
-                                                    @else
-                                                        <div
-                                                            class="flex h-full w-full items-center justify-center bg-gradient-to-br from-amber-50 to-slate-100 text-slate-500">
-                                                            <svg viewBox="0 0 96 96" class="h-16 w-16"
-                                                                fill="none" xmlns="http://www.w3.org/2000/svg">
-                                                                <circle cx="35" cy="48" r="22"
-                                                                    fill="#f8fafc" stroke="currentColor"
-                                                                    stroke-width="4" />
-                                                                <circle cx="35" cy="48" r="10"
-                                                                    fill="#f59e0b" opacity=".35" />
-                                                                <path d="M67 18h10l4 48a9 9 0 0 1-18 0l4-48Z"
-                                                                    fill="#e0f2fe" stroke="currentColor"
-                                                                    stroke-width="4" />
-                                                                <path d="M66 34h13" stroke="currentColor"
-                                                                    stroke-width="4" stroke-linecap="round" />
-                                                            </svg>
-                                                        </div>
-                                                    @endif
-                                                </div>
-                                                <div class="flex min-w-0 flex-1 flex-col justify-between gap-3">
-                                                    <div>
-                                                        <h3 class="font-semibold">{{ $item->name }}</h3>
-                                                        <p class="line-clamp-2 text-sm text-gray-500">
-                                                            {{ $item->description }}</p>
+                                    <div class="max-h-[32rem] overflow-y-auto pr-2 xl:max-h-[calc(100vh-18rem)]">
+                                        <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                            @forelse ($menuItemsByModule[$module->id] ?? collect() as $item)
+                                                @php
+                                                    $imageUrl = $this->menuItemImageUrl($item);
+                                                @endphp
+                                                <div class="panel flex gap-4 p-4">
+                                                    <div
+                                                        class="h-24 w-24 flex-none overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
+                                                        @if ($imageUrl)
+                                                            <img src="{{ $imageUrl }}" alt="{{ $item->name }}"
+                                                                class="h-full w-full object-cover" loading="lazy">
+                                                        @else
+                                                            <div
+                                                                class="flex h-full w-full items-center justify-center bg-gradient-to-br from-amber-50 to-slate-100 text-slate-500">
+                                                                <svg viewBox="0 0 96 96" class="h-16 w-16"
+                                                                    fill="none" xmlns="http://www.w3.org/2000/svg">
+                                                                    <circle cx="35" cy="48" r="22"
+                                                                        fill="#f8fafc" stroke="currentColor"
+                                                                        stroke-width="4" />
+                                                                    <circle cx="35" cy="48" r="10"
+                                                                        fill="#f59e0b" opacity=".35" />
+                                                                    <path d="M67 18h10l4 48a9 9 0 0 1-18 0l4-48Z"
+                                                                        fill="#e0f2fe" stroke="currentColor"
+                                                                        stroke-width="4" />
+                                                                    <path d="M66 34h13" stroke="currentColor"
+                                                                        stroke-width="4" stroke-linecap="round" />
+                                                                </svg>
+                                                            </div>
+                                                        @endif
                                                     </div>
-                                                    <div class="flex items-center justify-between gap-4">
+                                                    <div class="flex min-w-0 flex-1 flex-col justify-between gap-3">
                                                         <div>
-                                                            <p class="text-sm font-semibold text-gray-800">
-                                                                {{ number_format($item->price, 2) }}</p>
-                                                            <p class="text-xs text-gray-400">
-                                                                {{ $item->is_trackable ? number_format($item->quantity, 0) . ' available' : 'Always available' }}
-                                                            </p>
+                                                            <h3 class="font-semibold">{{ $item->name }}</h3>
+                                                            <p class="line-clamp-2 text-sm text-gray-500">
+                                                                {{ $item->description }}</p>
                                                         </div>
-                                                        <x-ui.button
-                                                            wire:click="addToCart({{ $item->id }},{{ $module->id }})"
-                                                            target="addToCart({{ $item->id }},{{ $module->id }})"
-                                                            type="button" icon="plus">Add</x-ui.button>
+                                                        <div class="flex items-center justify-between gap-4">
+                                                            <div>
+                                                                <p class="text-sm font-semibold text-gray-800">
+                                                                    {{ number_format($item->price, 2) }}</p>
+                                                                <p class="text-xs text-gray-400">
+                                                                    {{ $item->is_trackable ? number_format($item->quantity, 0) . ' available' : 'Always available' }}
+                                                                </p>
+                                                            </div>
+                                                            <x-ui.button
+                                                                wire:click="addToCart({{ $item->id }},{{ $module->id }})"
+                                                                target="addToCart({{ $item->id }},{{ $module->id }})"
+                                                                type="button" icon="plus">Add</x-ui.button>
+                                                        </div>
                                                     </div>
                                                 </div>
-                                            </div>
-                                        @empty
-                                            <div class="panel md:col-span-2 py-10 text-center text-gray-500">
-                                                No menu items match your search.
-                                            </div>
-                                        @endforelse
+                                            @empty
+                                                <div class="panel md:col-span-2 py-10 text-center text-gray-500">
+                                                    No menu items match your search.
+                                                </div>
+                                            @endforelse
+                                        </div>
                                     </div>
                                 </div>
 
@@ -525,7 +527,7 @@
                             <p class="text-xs text-gray-500">{{ $receiptSettings['address'] }}</p>
                         @endif
                         <p class="text-xs text-gray-500">
-                            {{ collect([$receiptSettings['phone'], $receiptSettings['email']])->filter()->implode(' · ') }}
+                            {{ collect([$receiptSettings['phone'], $receiptSettings['email']])->filter()->implode(' - ') }}
                         </p>
                         @if ($receiptSettings['whatsapp'])
                             <p class="text-xs text-gray-500">WhatsApp: {{ $receiptSettings['whatsapp'] }}</p>
@@ -619,7 +621,7 @@
                     <x-ui.button type="button" variant="secondary" icon="printer"
                         x-on:click="printReceipt()">Print</x-ui.button>
                     <x-ui.button type="button" icon="arrow-down-tray"
-                        x-on:click="printReceipt()">Download PDF</x-ui.button>
+                        x-on:click="printReceipt()">Print / Save PDF</x-ui.button>
                 </div>
             </x-slot:footer>
         </x-ui.modal>

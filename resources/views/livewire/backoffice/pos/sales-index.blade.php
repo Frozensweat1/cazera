@@ -209,7 +209,7 @@
                         @if ($receiptSettings['address'])
                             <p class="text-xs text-gray-500">{{ $receiptSettings['address'] }}</p>
                         @endif
-                        <p class="text-xs text-gray-500">{{ collect([$receiptSettings['phone'], $receiptSettings['email']])->filter()->implode(' · ') }}</p>
+                        <p class="text-xs text-gray-500">{{ collect([$receiptSettings['phone'], $receiptSettings['email']])->filter()->implode(' - ') }}</p>
                         @if ($receiptSettings['whatsapp'])
                             <p class="text-xs text-gray-500">WhatsApp: {{ $receiptSettings['whatsapp'] }}</p>
                         @endif
@@ -280,7 +280,7 @@
             <x-slot:footer>
                 <div class="flex justify-end gap-3">
                     <x-ui.button type="button" variant="secondary" icon="printer" x-on:click="printReceipt()">Print</x-ui.button>
-                    <x-ui.button type="button" icon="arrow-down-tray" x-on:click="printReceipt()">Download PDF</x-ui.button>
+                    <x-ui.button type="button" icon="arrow-down-tray" x-on:click="printReceipt()">Print / Save PDF</x-ui.button>
                 </div>
             </x-slot:footer>
         </x-ui.modal>

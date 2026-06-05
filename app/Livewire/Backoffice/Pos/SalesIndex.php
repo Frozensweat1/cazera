@@ -132,7 +132,7 @@ class SalesIndex extends Component
                 'paid_amount' => $paid,
                 'remaining_balance' => max(0, $remaining),
                 'is_debt' => $remaining > 0,
-                'status' => $remaining <= 0 && $sale->status === 'pending' ? 'completed' : $sale->status,
+                'status' => $remaining <= 0 ? 'completed' : $sale->status,
                 'completed_at' => $remaining <= 0 ? now() : $sale->completed_at,
             ]);
         });
@@ -210,10 +210,19 @@ class SalesIndex extends Component
                     continue;
                 }
 
-                $before = (int) $item->menuItem->quantity;
+                $menuItem = $item->menuItem()->lockForUpdate()->first();
+
+                if (! $menuItem?->is_trackable) {
+                    continue;
+                }
+
+                $before = (int) $menuItem->quantity;
                 $after = $before + (int) $item->qty;
 
-                $item->menuItem->update(['quantity' => $after]);
+                $menuItem->update([
+                    'quantity' => $after,
+                    'status' => $menuItem->status === 'out_of_stock' && $after > 0 ? 'available' : $menuItem->status,
+                ]);
 
                 MenuItemAdjustment::create([
                     'branch_id' => $sale->branch_id,

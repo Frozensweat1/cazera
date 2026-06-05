@@ -82,10 +82,27 @@ class KitchenIndex extends Component
             return;
         }
 
-        $item = SaleItem::accessible()->findOrFail($saleItemId);
+        $item = SaleItem::accessible()
+            ->with('sale')
+            ->where('is_kitchen_notified', true)
+            ->findOrFail($saleItemId);
+
+        $itemStatus = match ($status) {
+            'cooking' => 'preparing',
+            'ready' => 'ready',
+            'completed' => 'served',
+            default => 'pending',
+        };
 
         $item->update([
+            'status' => $itemStatus,
             'kitchen_status' => $status,
+            'prepared_at' => in_array($status, ['ready', 'completed'], true)
+                ? $item->prepared_at ?? now()
+                : $item->prepared_at,
+            'served_at' => $status === 'completed'
+                ? $item->served_at ?? now()
+                : $item->served_at,
             'kitchen_started_at' => in_array($status, ['cooking', 'ready', 'completed'], true)
                 ? $item->kitchen_started_at ?? now()
                 : $item->kitchen_started_at,
@@ -104,16 +121,18 @@ class KitchenIndex extends Component
 
     protected function updateSaleKitchenStatus(Sale $sale): void
     {
-        $statuses = $sale->items()->pluck('kitchen_status')->unique()->toArray();
+        $items = $sale->items()->where('is_kitchen_notified', true);
+        $statuses = (clone $items)->pluck('kitchen_status')->unique()->toArray();
 
-        if (! $sale->items()->exists()) {
+        if (! (clone $items)->exists()) {
             return;
         }
 
         if (count($statuses) === 1 && $statuses[0] === 'completed') {
             $sale->update([
-                'status' => 'completed',
-                'completed_at' => now(),
+                'status' => (float) $sale->remaining_balance <= 0 ? 'completed' : 'served',
+                'served_at' => $sale->served_at ?? now(),
+                'completed_at' => (float) $sale->remaining_balance <= 0 ? now() : $sale->completed_at,
             ]);
 
             return;

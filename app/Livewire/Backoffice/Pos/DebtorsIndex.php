@@ -28,7 +28,7 @@ class DebtorsIndex extends Component
 
     public function render()
     {
-        $branchId = session('branch_id');
+        $branchId = $this->filterBranch ?: (auth()->user()?->isSuperAdmin() ? null : session('branch_id'));
         $paymentSale = $this->paymentSaleId
             ? Sale::with(['customer', 'branch', 'module'])->accessible()->find($this->paymentSaleId)
             : null;
@@ -39,7 +39,6 @@ class DebtorsIndex extends Component
                 ->where('is_debt', true)
                 ->where('status', '!=', 'refunded')
                 ->when($branchId, fn($query) => $query->where('branch_id', $branchId))
-                ->when($this->filterBranch, fn($query) => $query->where('branch_id', $this->filterBranch))
                 ->when($this->filterModule, fn($query) => $query->where('module_id', $this->filterModule))
                 ->when($this->search, fn($query) => $query->where(function ($query) {
                     $query->where('sale_number', 'like', "%{$this->search}%")
@@ -48,7 +47,7 @@ class DebtorsIndex extends Component
                 ->latest('sale_date')
                 ->paginate(15),
             'branches' => $this->accessibleBranches(),
-            'modules' => $this->accessibleModules($this->filterBranch ?: $branchId ?: null),
+            'modules' => $this->accessibleModules($branchId ?: null),
             'paymentSale' => $paymentSale,
         ]);
     }

@@ -19,7 +19,7 @@ class SplitPaymentsIndex extends Component
 
     public function render()
     {
-        $branchId = session('branch_id');
+        $branchId = $this->filterBranch ?: (auth()->user()?->isSuperAdmin() ? null : session('branch_id'));
         $viewSale = $this->viewSaleId
             ? Sale::with(['customer', 'branch', 'module', 'creator', 'payments.receiver'])
                 ->accessible()
@@ -32,7 +32,6 @@ class SplitPaymentsIndex extends Component
                 ->accessible()
                 ->has('payments', '>', 1)
                 ->when($branchId, fn($query) => $query->where('branch_id', $branchId))
-                ->when($this->filterBranch, fn($query) => $query->where('branch_id', $this->filterBranch))
                 ->when($this->filterModule, fn($query) => $query->where('module_id', $this->filterModule))
                 ->when($this->search, fn($query) => $query->where(function ($query) {
                     $query->where('sale_number', 'like', "%{$this->search}%")
@@ -41,7 +40,7 @@ class SplitPaymentsIndex extends Component
                 ->latest('sale_date')
                 ->paginate(15),
             'branches' => $this->accessibleBranches(),
-            'modules' => $this->accessibleModules($this->filterBranch ?: $branchId ?: null),
+            'modules' => $this->accessibleModules($branchId ?: null),
             'viewSale' => $viewSale,
         ]);
     }

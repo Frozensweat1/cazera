@@ -1,8 +1,21 @@
+ @php
+     $settings = \App\Support\WebsiteContent::settings();
+     $brandName = $settings?->business_name ?: config('app.name', 'Cazera');
+     $baseTitle = $settings?->meta_title ?: $brandName;
+     $pageTitle = trim($__env->yieldContent('pageTitle'));
+     $documentTitle = $pageTitle !== '' ? $pageTitle . ' | ' . $baseTitle : $baseTitle . ' Backoffice';
+     $description = $settings?->meta_description ?: 'Hospitality ERP, POS, inventory, finance, and website management system.';
+     $favicon = $settings?->favicon ? \App\Support\WebsiteContent::assetPath($settings->favicon) : asset('favicon.ico');
+ @endphp
  <meta charset="utf-8">
  <meta http-equiv="X-UA-Compatible" content="IE=edge">
- <title>@yield('pageTitle', config('app.name', 'Dashboard Template'))</title>
+ <title>{{ $documentTitle }}</title>
  <meta name="viewport" content="width=device-width, initial-scale=1">
- <link rel="icon" type="image/x-icon" href="favicon.png">
+ <meta name="description" content="{{ $description }}">
+ <meta name="application-name" content="{{ $brandName }}">
+ <meta name="theme-color" content="#0f0d0a">
+ <link rel="icon" type="image/x-icon" href="{{ $favicon }}">
+ <link rel="apple-touch-icon" href="{{ $favicon }}">
  <link rel="preconnect" href="https://fonts.googleapis.com">
  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
  <link href="css2?family=Nunito:wght@400;500;600;700;800&display=swap" rel="stylesheet">

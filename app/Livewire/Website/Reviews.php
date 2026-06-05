@@ -6,10 +6,10 @@ use App\Models\MenuItem;
 use App\Models\Review;
 use App\Models\Testimonial;
 use App\Support\WebsiteContent;
-use Jantinnerezo\LivewireAlert\Facades\LivewireAlert;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 use Livewire\WithPagination;
+use Throwable;
 
 #[Layout('components.layouts.website')]
 class Reviews extends Component
@@ -50,6 +50,9 @@ class Reviews extends Component
 
     public function submitReview(): void
     {
+        $this->resetErrorBag();
+        $this->successMessage = null;
+
         $this->validate([
             'reviewer_name' => ['required', 'string', 'max:255'],
             'email' => ['nullable', 'email', 'max:255'],
@@ -73,28 +76,34 @@ class Reviews extends Component
             return;
         }
 
-        Review::create([
-            'branch_id' => $this->branch_id ?: $menuItem?->branch_id,
-            'module_id' => $menuItem?->module_id,
-            'menu_item_id' => $this->menu_item_id ?: null,
-            'reviewer_name' => $this->reviewer_name,
-            'email' => $this->email,
-            'rating' => $this->rating,
-            'review' => $this->review,
-            'is_approved' => false,
-        ]);
+        try {
+            Review::create([
+                'branch_id' => $this->branch_id ?: $menuItem?->branch_id,
+                'module_id' => $menuItem?->module_id,
+                'menu_item_id' => $this->menu_item_id ?: null,
+                'reviewer_name' => $this->reviewer_name,
+                'email' => $this->email ?: null,
+                'rating' => $this->rating,
+                'review' => $this->review,
+                'is_approved' => false,
+            ]);
+        } catch (Throwable $exception) {
+            report($exception);
+            $this->addError('review', 'We could not submit your review right now. Please try again in a moment.');
+
+            return;
+        }
 
         $this->successMessage = 'Thank you. Your review has been submitted and will appear after approval.';
-        LivewireAlert::title('Review Submitted')
-            ->text('Thank you. Your review will appear after approval.')
-            ->success()
-            ->show();
         $this->reset(['reviewer_name', 'email', 'review']);
         $this->rating = 5;
     }
 
     public function submitTestimonial(): void
     {
+        $this->resetErrorBag();
+        $this->testimonialSuccessMessage = null;
+
         $this->validate([
             'testimonial_author_name' => ['required', 'string', 'max:255'],
             'testimonial_title' => ['nullable', 'string', 'max:255'],
@@ -104,23 +113,26 @@ class Reviews extends Component
             'testimonial_quote' => ['required', 'string', 'max:2000'],
         ]);
 
-        Testimonial::create([
-            'branch_id' => $this->testimonial_branch_id ?: null,
-            'author_name' => $this->testimonial_author_name,
-            'title' => $this->testimonial_title ?: 'Guest',
-            'company' => $this->testimonial_company ?: null,
-            'quote' => $this->testimonial_quote,
-            'rating' => $this->testimonial_rating,
-            'is_published' => false,
-            'is_featured' => false,
-            'sort_order' => 0,
-        ]);
+        try {
+            Testimonial::create([
+                'branch_id' => $this->testimonial_branch_id ?: null,
+                'author_name' => $this->testimonial_author_name,
+                'title' => $this->testimonial_title ?: 'Guest',
+                'company' => $this->testimonial_company ?: null,
+                'quote' => $this->testimonial_quote,
+                'rating' => $this->testimonial_rating,
+                'is_published' => false,
+                'is_featured' => false,
+                'sort_order' => 0,
+            ]);
+        } catch (Throwable $exception) {
+            report($exception);
+            $this->addError('testimonial_quote', 'We could not submit your testimonial right now. Please try again in a moment.');
+
+            return;
+        }
 
         $this->testimonialSuccessMessage = 'Thank you. Your testimonial has been submitted for moderation.';
-        LivewireAlert::title('Testimonial Submitted')
-            ->text('Thank you. Your testimonial will appear after approval.')
-            ->success()
-            ->show();
 
         $this->reset(['testimonial_author_name', 'testimonial_title', 'testimonial_quote', 'testimonial_branch_id', 'testimonial_company']);
         $this->testimonial_rating = 5;

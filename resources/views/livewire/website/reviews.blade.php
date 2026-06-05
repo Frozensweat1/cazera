@@ -38,20 +38,25 @@
                     @if ($successMessage)
                         <div class="mt-4 rounded-2xl border border-emerald-400/30 bg-emerald-500/10 p-4 text-sm text-emerald-100">{{ $successMessage }}</div>
                     @endif
+                    @if ($errors->has('reviewer_name') || $errors->has('email') || $errors->has('branch_id') || $errors->has('menu_item_id') || $errors->has('rating') || $errors->has('review'))
+                        <div class="mt-4 rounded-2xl border border-red-400/40 bg-red-500/12 p-4 text-sm font-semibold text-red-100">
+                            Please correct the highlighted review fields and try again.
+                        </div>
+                    @endif
                     <form wire:submit.prevent="submitReview" class="mt-5 grid gap-4">
-                        <input wire:model.defer="reviewer_name" type="text" class="rounded-2xl border border-ivory/10 bg-ink/65 px-4 py-3 text-ivory outline-none focus:border-gold/70" placeholder="Your name">
-                        @error('reviewer_name')<span class="text-sm text-red-300">{{ $message }}</span>@enderror
-                        <input wire:model.defer="email" type="email" class="rounded-2xl border border-ivory/10 bg-ink/65 px-4 py-3 text-ivory outline-none focus:border-gold/70" placeholder="Email optional">
-                        @error('email')<span class="text-sm text-red-300">{{ $message }}</span>@enderror
-                        <select wire:model.defer="rating" class="rounded-2xl border border-ivory/10 bg-ink/65 px-4 py-3 text-ivory outline-none focus:border-gold/70">
+                        <input wire:model="reviewer_name" type="text" class="rounded-2xl border border-ivory/10 bg-ink/65 px-4 py-3 text-ivory outline-none focus:border-gold/70" placeholder="Your name">
+                        @error('reviewer_name')<span class="text-sm font-bold text-red-200">{{ $message }}</span>@enderror
+                        <input wire:model="email" type="email" class="rounded-2xl border border-ivory/10 bg-ink/65 px-4 py-3 text-ivory outline-none focus:border-gold/70" placeholder="Email optional">
+                        @error('email')<span class="text-sm font-bold text-red-200">{{ $message }}</span>@enderror
+                        <select wire:model="rating" class="rounded-2xl border border-ivory/10 bg-ink/65 px-4 py-3 text-ivory outline-none focus:border-gold/70">
                             @for ($i = 5; $i >= 1; $i--)
                                 <option value="{{ $i }}">{{ $i }} star{{ $i > 1 ? 's' : '' }}</option>
                             @endfor
                         </select>
-                        @error('rating')<span class="text-sm text-red-300">{{ $message }}</span>@enderror
-                        @error('menu_item_id')<span class="text-sm text-red-300">{{ $message }}</span>@enderror
-                        <textarea wire:model.defer="review" rows="5" class="rounded-2xl border border-ivory/10 bg-ink/65 px-4 py-3 text-ivory outline-none focus:border-gold/70" placeholder="Tell us about your visit"></textarea>
-                        @error('review')<span class="text-sm text-red-300">{{ $message }}</span>@enderror
+                        @error('rating')<span class="text-sm font-bold text-red-200">{{ $message }}</span>@enderror
+                        @error('menu_item_id')<span class="text-sm font-bold text-red-200">{{ $message }}</span>@enderror
+                        <textarea wire:model="review" rows="5" class="rounded-2xl border border-ivory/10 bg-ink/65 px-4 py-3 text-ivory outline-none focus:border-gold/70" placeholder="Tell us about your visit"></textarea>
+                        @error('review')<span class="text-sm font-bold text-red-200">{{ $message }}</span>@enderror
                         <x-website.button type="submit" wire:loading.attr="disabled" wire:target="submitReview">
                             <span wire:loading.remove wire:target="submitReview">Submit Review</span>
                             <span wire:loading wire:target="submitReview">Submitting...</span>
@@ -64,26 +69,31 @@
                     @if ($testimonialSuccessMessage)
                         <div class="mt-4 rounded-2xl border border-emerald-400/30 bg-emerald-500/10 p-4 text-sm text-emerald-100">{{ $testimonialSuccessMessage }}</div>
                     @endif
+                    @if ($errors->has('testimonial_author_name') || $errors->has('testimonial_title') || $errors->has('testimonial_company') || $errors->has('testimonial_branch_id') || $errors->has('testimonial_rating') || $errors->has('testimonial_quote'))
+                        <div class="mt-4 rounded-2xl border border-red-400/40 bg-red-500/12 p-4 text-sm font-semibold text-red-100">
+                            Please correct the highlighted testimonial fields and try again.
+                        </div>
+                    @endif
                     <form wire:submit.prevent="submitTestimonial" class="mt-5 grid gap-4">
-                        <input wire:model.defer="testimonial_author_name" type="text" class="rounded-2xl border border-ivory/10 bg-ink/65 px-4 py-3 text-ivory outline-none focus:border-gold/70" placeholder="Your name">
-                        @error('testimonial_author_name')<span class="text-sm text-red-300">{{ $message }}</span>@enderror
-                        <input wire:model.defer="testimonial_title" type="text" class="rounded-2xl border border-ivory/10 bg-ink/65 px-4 py-3 text-ivory outline-none focus:border-gold/70" placeholder="Title optional">
-                        @error('testimonial_title')<span class="text-sm text-red-300">{{ $message }}</span>@enderror
-                        <select wire:model.defer="testimonial_branch_id" class="rounded-2xl border border-ivory/10 bg-ink/65 px-4 py-3 text-ivory outline-none focus:border-gold/70">
+                        <input wire:model="testimonial_author_name" type="text" class="rounded-2xl border border-ivory/10 bg-ink/65 px-4 py-3 text-ivory outline-none focus:border-gold/70" placeholder="Your name">
+                        @error('testimonial_author_name')<span class="text-sm font-bold text-red-200">{{ $message }}</span>@enderror
+                        <input wire:model="testimonial_title" type="text" class="rounded-2xl border border-ivory/10 bg-ink/65 px-4 py-3 text-ivory outline-none focus:border-gold/70" placeholder="Title optional">
+                        @error('testimonial_title')<span class="text-sm font-bold text-red-200">{{ $message }}</span>@enderror
+                        <select wire:model="testimonial_branch_id" class="rounded-2xl border border-ivory/10 bg-ink/65 px-4 py-3 text-ivory outline-none focus:border-gold/70">
                             <option value="">General testimonial</option>
                             @foreach ($branches->whereNotNull('id') as $branch)
                                 <option value="{{ $branch['id'] }}">{{ $branch['name'] }}</option>
                             @endforeach
                         </select>
-                        @error('testimonial_branch_id')<span class="text-sm text-red-300">{{ $message }}</span>@enderror
-                        <select wire:model.defer="testimonial_rating" class="rounded-2xl border border-ivory/10 bg-ink/65 px-4 py-3 text-ivory outline-none focus:border-gold/70">
+                        @error('testimonial_branch_id')<span class="text-sm font-bold text-red-200">{{ $message }}</span>@enderror
+                        <select wire:model="testimonial_rating" class="rounded-2xl border border-ivory/10 bg-ink/65 px-4 py-3 text-ivory outline-none focus:border-gold/70">
                             @for ($i = 5; $i >= 1; $i--)
                                 <option value="{{ $i }}">{{ $i }} star{{ $i > 1 ? 's' : '' }}</option>
                             @endfor
                         </select>
-                        @error('testimonial_rating')<span class="text-sm text-red-300">{{ $message }}</span>@enderror
-                        <textarea wire:model.defer="testimonial_quote" rows="5" class="rounded-2xl border border-ivory/10 bg-ink/65 px-4 py-3 text-ivory outline-none focus:border-gold/70" placeholder="What should future guests know?"></textarea>
-                        @error('testimonial_quote')<span class="text-sm text-red-300">{{ $message }}</span>@enderror
+                        @error('testimonial_rating')<span class="text-sm font-bold text-red-200">{{ $message }}</span>@enderror
+                        <textarea wire:model="testimonial_quote" rows="5" class="rounded-2xl border border-ivory/10 bg-ink/65 px-4 py-3 text-ivory outline-none focus:border-gold/70" placeholder="What should future guests know?"></textarea>
+                        @error('testimonial_quote')<span class="text-sm font-bold text-red-200">{{ $message }}</span>@enderror
                         <x-website.button type="submit" wire:loading.attr="disabled" wire:target="submitTestimonial">
                             <span wire:loading.remove wire:target="submitTestimonial">Submit Testimonial</span>
                             <span wire:loading wire:target="submitTestimonial">Submitting...</span>

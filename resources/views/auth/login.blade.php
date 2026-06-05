@@ -48,11 +48,4 @@
             Sign in
         </button>
     </form>
-
-    @if (Route::has('register'))
-        <p class="mt-7 text-center text-sm text-slate-500">
-            Need an account?
-            <a href="{{ route('register') }}" class="font-bold text-slate-950 hover:text-[#7a5520]">Create one</a>
-        </p>
-    @endif
 </x-layouts.auth>

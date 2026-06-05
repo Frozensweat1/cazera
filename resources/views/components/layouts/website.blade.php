@@ -74,7 +74,6 @@
         @include('components.website.sticky-cta', ['settings' => $settings])
     </div>
 
-    <script defer src="{{ asset('assets/js/alpine.min.js') }}"></script>
     @livewireScripts
 </body>
 

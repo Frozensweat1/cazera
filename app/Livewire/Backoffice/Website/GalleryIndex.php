@@ -7,11 +7,13 @@ use App\Models\GalleryItem;
 use Illuminate\Support\Str;
 use Jantinnerezo\LivewireAlert\Facades\LivewireAlert;
 use Livewire\Component;
+use Livewire\WithFileUploads;
 use Livewire\WithPagination;
 
 class GalleryIndex extends Component
 {
     use HasBranchScope;
+    use WithFileUploads;
     use WithPagination;
 
     public string $search = '';
@@ -24,6 +26,7 @@ class GalleryIndex extends Component
     public string $category = 'ambiance';
     public string $type = 'image';
     public string $image = '';
+    public $image_upload;
     public string $video_url = '';
     public string $description = '';
     public bool $is_featured = false;
@@ -41,6 +44,7 @@ class GalleryIndex extends Component
             'category' => 'required|string|max:80',
             'type' => 'required|in:image,video',
             'image' => 'nullable|string|max:2048',
+            'image_upload' => 'nullable|image|max:5120',
             'video_url' => 'nullable|string|max:2048',
             'description' => 'nullable|string|max:1000',
             'is_featured' => 'boolean',
@@ -95,13 +99,19 @@ class GalleryIndex extends Component
         $this->slug = $this->slug ?: Str::slug($this->title);
         $this->validate();
 
+        $image = $this->image ?: null;
+
+        if ($this->image_upload) {
+            $image = $this->image_upload->store('gallery', 'public');
+        }
+
         GalleryItem::updateOrCreate(['id' => $this->galleryId], [
             'branch_id' => $this->branch_id ?: null,
             'title' => $this->title,
             'slug' => $this->slug,
             'category' => $this->category,
             'type' => $this->type,
-            'image' => $this->image ?: null,
+            'image' => $image,
             'video_url' => $this->video_url ?: null,
             'description' => $this->description ?: null,
             'is_featured' => $this->is_featured,
@@ -122,7 +132,7 @@ class GalleryIndex extends Component
 
     private function resetForm(): void
     {
-        $this->reset(['galleryId', 'branch_id', 'title', 'slug', 'image', 'video_url', 'description']);
+        $this->reset(['galleryId', 'branch_id', 'title', 'slug', 'image', 'image_upload', 'video_url', 'description']);
         $this->category = 'ambiance';
         $this->type = 'image';
         $this->is_featured = false;

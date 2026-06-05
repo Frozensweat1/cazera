@@ -3,11 +3,10 @@
 namespace App\Livewire\Backoffice;
 
 use Livewire\Component;
-use Illuminate\Support\Arr;
-use Illuminate\Support\Str;
-use App\Models\Branch;
 use App\Models\StaffProfile;
-use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\Rule;
+use Jantinnerezo\LivewireAlert\Facades\LivewireAlert;
 
 class UserProfile extends Component
 {
@@ -134,7 +133,7 @@ class UserProfile extends Component
     {
         $this->validate([
             'profile_name' => ['required', 'string', 'max:255'],
-            'profile_email' => ['required', 'string', 'email', 'max:255'],
+            'profile_email' => ['required', 'string', 'email', 'max:255', Rule::unique('users', 'email')->ignore(auth()->id())],
         ]);
 
         $user = auth()->user();
@@ -151,7 +150,10 @@ class UserProfile extends Component
         $this->email = $this->profile_email;
         $this->initials = $this->makeInitials($this->name, $this->email);
 
-        $this->dispatch('notify', message: 'Profile updated successfully.');
+        LivewireAlert::title('Profile Updated')
+            ->text('Your profile information has been saved successfully.')
+            ->success()
+            ->show();
     }
 
     public function updatePassword(): void
@@ -166,20 +168,23 @@ class UserProfile extends Component
             return;
         }
 
-        if (! \Illuminate\Support\Facades\Hash::check($this->current_password, $user->password)) {
+        if (! Hash::check($this->current_password, $user->password)) {
             $this->addError('current_password', 'The provided password does not match your current password.');
             return;
         }
 
         $user->forceFill([
-            'password' => \Illuminate\Support\Facades\Hash::make($this->password),
+            'password' => Hash::make($this->password),
         ])->save();
 
         $this->current_password = '';
         $this->password = '';
         $this->password_confirmation = '';
 
-        $this->dispatch('notify', message: 'Password updated successfully.');
+        LivewireAlert::title('Password Updated')
+            ->text('Your password has been changed successfully.')
+            ->success()
+            ->show();
     }
 
     public function updateStaffDetails(): void
@@ -193,7 +198,7 @@ class UserProfile extends Component
         $profileId = $user->staffProfile?->id;
 
         $this->validate([
-            'staff_employee_code' => ['nullable', 'string', 'max:100', \Illuminate\Validation\Rule::unique('staff_profiles', 'employee_code')->ignore($profileId)],
+            'staff_employee_code' => ['nullable', 'string', 'max:100', Rule::unique('staff_profiles', 'employee_code')->ignore($profileId)],
             'staff_job_title' => 'nullable|string|max:255',
             'staff_department' => 'nullable|string|max:255',
             'staff_employment_type' => 'required|in:full_time,part_time,contract,intern,casual',
@@ -228,7 +233,10 @@ class UserProfile extends Component
             'address' => $this->staff_address,
         ]);
 
-        $this->dispatch('notify', message: 'Staff details updated successfully.');
+        LivewireAlert::title('Staff Details Updated')
+            ->text('Your staff details have been saved successfully.')
+            ->success()
+            ->show();
     }
 
     public function render()
@@ -236,4 +244,3 @@ class UserProfile extends Component
         return view('livewire.backoffice.user-profile');
     }
 }
-

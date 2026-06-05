@@ -24,13 +24,13 @@
         <div class="rounded-lg border border-gray-200 bg-white p-4 dark:border-white/10 dark:bg-[#0e1726]">
             <h2 class="text-base font-semibold text-gray-900 dark:text-white">Update Profile</h2>
 
-            <form wire:submit.prevent="updateProfile" class="mt-4 space-y-4">
+            <div class="mt-4 space-y-4">
                 <div>
                     <label class="block text-sm font-medium text-gray-700 dark:text-gray-200">Name</label>
                     <input type="text" wire:model="profile_name"
                         class="mt-1 w-full rounded-lg border border-gray-300 dark:border-white/10 bg-white dark:bg-[#0e1726] px-3 py-2 text-sm" />
                     @error('profile_name')
-                        <div class="mt-1 text-xs text-red-600">{{ $message }}</div>
+                        <div class="profile-error">{{ $message }}</div>
                     @enderror
                 </div>
 
@@ -39,29 +39,33 @@
                     <input type="email" wire:model="profile_email"
                         class="mt-1 w-full rounded-lg border border-gray-300 dark:border-white/10 bg-white dark:bg-[#0e1726] px-3 py-2 text-sm" />
                     @error('profile_email')
-                        <div class="mt-1 text-xs text-red-600">{{ $message }}</div>
+                        <div class="profile-error">{{ $message }}</div>
                     @enderror
                 </div>
 
                 <div class="flex justify-end">
-                    <button type="submit"
-                        class="rounded-lg bg-slate-950 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-2 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200 dark:focus:ring-white/70 dark:focus:ring-offset-[#0e1726]">
-                        Save Profile
+                    <button type="button"
+                        wire:click="updateProfile"
+                        wire:target="updateProfile"
+                        wire:loading.attr="disabled"
+                        class="profile-action-button">
+                        <span wire:loading.remove wire:target="updateProfile">Save Profile</span>
+                        <span wire:loading wire:target="updateProfile">Saving...</span>
                     </button>
                 </div>
-            </form>
+            </div>
         </div>
 
         <div class="rounded-lg border border-gray-200 bg-white p-4 dark:border-white/10 dark:bg-[#0e1726]">
             <h2 class="text-base font-semibold text-gray-900 dark:text-white">Change Password</h2>
 
-            <form wire:submit.prevent="updatePassword" class="mt-4 space-y-4">
+            <div class="mt-4 space-y-4">
                 <div>
                     <label class="block text-sm font-medium text-gray-700 dark:text-gray-200">Current password</label>
                     <input type="password" wire:model="current_password"
                         class="mt-1 w-full rounded-lg border border-gray-300 dark:border-white/10 bg-white dark:bg-[#0e1726] px-3 py-2 text-sm" />
                     @error('current_password')
-                        <div class="mt-1 text-xs text-red-600">{{ $message }}</div>
+                        <div class="profile-error">{{ $message }}</div>
                     @enderror
                 </div>
 
@@ -70,7 +74,7 @@
                     <input type="password" wire:model="password"
                         class="mt-1 w-full rounded-lg border border-gray-300 dark:border-white/10 bg-white dark:bg-[#0e1726] px-3 py-2 text-sm" />
                     @error('password')
-                        <div class="mt-1 text-xs text-red-600">{{ $message }}</div>
+                        <div class="profile-error">{{ $message }}</div>
                     @enderror
                 </div>
 
@@ -81,34 +85,38 @@
                 </div>
 
                 <div class="flex justify-end">
-                    <button type="submit"
-                        class="rounded-lg bg-slate-950 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-2 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200 dark:focus:ring-white/70 dark:focus:ring-offset-[#0e1726]">
-                        Update Password
+                    <button type="button"
+                        wire:click="updatePassword"
+                        wire:target="updatePassword"
+                        wire:loading.attr="disabled"
+                        class="profile-action-button">
+                        <span wire:loading.remove wire:target="updatePassword">Update Password</span>
+                        <span wire:loading wire:target="updatePassword">Updating...</span>
                     </button>
                 </div>
-            </form>
+            </div>
         </div>
 
         <div class="rounded-lg border border-gray-200 bg-white p-4 dark:border-white/10 dark:bg-[#0e1726]">
             <h2 class="text-base font-semibold text-gray-900 dark:text-white">Staff Details</h2>
             <p class="mt-1 text-sm text-gray-600 dark:text-gray-300">Update your employment, emergency contact, and payroll reference details.</p>
 
-            <form wire:submit.prevent="updateStaffDetails" class="mt-4 space-y-5">
+            <div class="mt-4 space-y-5">
                 <div class="grid grid-cols-1 gap-4 md:grid-cols-4">
                     <div>
                         <label class="block text-sm font-medium text-gray-700 dark:text-gray-200">Employee Code</label>
                         <input type="text" wire:model="staff_employee_code" class="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-white/10 dark:bg-[#0e1726]" />
-                        @error('staff_employee_code') <div class="mt-1 text-xs text-red-600">{{ $message }}</div> @enderror
+                        @error('staff_employee_code') <div class="profile-error">{{ $message }}</div> @enderror
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-gray-700 dark:text-gray-200">Job Title</label>
                         <input type="text" wire:model="staff_job_title" class="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-white/10 dark:bg-[#0e1726]" />
-                        @error('staff_job_title') <div class="mt-1 text-xs text-red-600">{{ $message }}</div> @enderror
+                        @error('staff_job_title') <div class="profile-error">{{ $message }}</div> @enderror
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-gray-700 dark:text-gray-200">Department</label>
                         <input type="text" wire:model="staff_department" class="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-white/10 dark:bg-[#0e1726]" />
-                        @error('staff_department') <div class="mt-1 text-xs text-red-600">{{ $message }}</div> @enderror
+                        @error('staff_department') <div class="profile-error">{{ $message }}</div> @enderror
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-gray-700 dark:text-gray-200">Employment Type</label>
@@ -119,7 +127,7 @@
                             <option value="intern">Intern</option>
                             <option value="casual">Casual</option>
                         </select>
-                        @error('staff_employment_type') <div class="mt-1 text-xs text-red-600">{{ $message }}</div> @enderror
+                        @error('staff_employment_type') <div class="profile-error">{{ $message }}</div> @enderror
                     </div>
                 </div>
 
@@ -127,22 +135,22 @@
                     <div>
                         <label class="block text-sm font-medium text-gray-700 dark:text-gray-200">Hire Date</label>
                         <input type="date" wire:model="staff_hire_date" class="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-white/10 dark:bg-[#0e1726]" />
-                        @error('staff_hire_date') <div class="mt-1 text-xs text-red-600">{{ $message }}</div> @enderror
+                        @error('staff_hire_date') <div class="profile-error">{{ $message }}</div> @enderror
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-gray-700 dark:text-gray-200">Date of Birth</label>
                         <input type="date" wire:model="staff_date_of_birth" class="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-white/10 dark:bg-[#0e1726]" />
-                        @error('staff_date_of_birth') <div class="mt-1 text-xs text-red-600">{{ $message }}</div> @enderror
+                        @error('staff_date_of_birth') <div class="profile-error">{{ $message }}</div> @enderror
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-gray-700 dark:text-gray-200">Gender</label>
                         <input type="text" wire:model="staff_gender" class="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-white/10 dark:bg-[#0e1726]" />
-                        @error('staff_gender') <div class="mt-1 text-xs text-red-600">{{ $message }}</div> @enderror
+                        @error('staff_gender') <div class="profile-error">{{ $message }}</div> @enderror
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-gray-700 dark:text-gray-200">National ID</label>
                         <input type="text" wire:model="staff_national_id" class="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-white/10 dark:bg-[#0e1726]" />
-                        @error('staff_national_id') <div class="mt-1 text-xs text-red-600">{{ $message }}</div> @enderror
+                        @error('staff_national_id') <div class="profile-error">{{ $message }}</div> @enderror
                     </div>
                 </div>
 
@@ -182,12 +190,16 @@
                 </div>
 
                 <div class="flex justify-end">
-                    <button type="submit"
-                        class="rounded-lg bg-slate-950 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-2 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200 dark:focus:ring-white/70 dark:focus:ring-offset-[#0e1726]">
-                        Save Staff Details
+                    <button type="button"
+                        wire:click="updateStaffDetails"
+                        wire:target="updateStaffDetails"
+                        wire:loading.attr="disabled"
+                        class="profile-action-button">
+                        <span wire:loading.remove wire:target="updateStaffDetails">Save Staff Details</span>
+                        <span wire:loading wire:target="updateStaffDetails">Saving...</span>
                     </button>
                 </div>
-            </form>
+            </div>
         </div>
 
         <div class="rounded-lg border border-gray-200 bg-white p-4 dark:border-white/10 dark:bg-[#0e1726]">

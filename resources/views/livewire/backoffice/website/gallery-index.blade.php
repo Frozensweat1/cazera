@@ -34,7 +34,30 @@
                 <x-ui.input label="Slug" name="slug" wire:model.live="slug" />
                 <x-ui.select label="Category" name="category" wire:model="category">@foreach ($categories as $cat)<option value="{{ $cat }}">{{ str($cat)->headline() }}</option>@endforeach</x-ui.select>
                 <x-ui.select label="Type" name="type" wire:model="type"><option value="image">Image</option><option value="video">Video</option></x-ui.select>
-                <x-ui.input label="Image URL / Storage Path" name="image" wire:model.live="image" />
+                <div>
+                    <x-ui.input label="Image URL / Storage Path" name="image" wire:model.live="image" />
+                    <p class="mt-1 text-xs text-gray-500">Paste an external image URL or existing storage path.</p>
+                </div>
+                <div>
+                    <label for="gallery_image_upload" class="form-label mb-2">Upload Image</label>
+                    <input id="gallery_image_upload" type="file" wire:model="image_upload" accept="image/*"
+                        class="form-input w-full rounded-lg border border-slate-200 bg-white p-2 text-sm dark:border-slate-700 dark:bg-[#0e1726]">
+                    <p class="mt-1 text-xs text-gray-500">Uploading a file will replace the URL/path when saved.</p>
+                    @error('image_upload')
+                        <div class="mt-1 text-xs font-semibold text-danger">{{ $message }}</div>
+                    @enderror
+                </div>
+                @if ($image_upload || $image)
+                    <div class="md:col-span-2">
+                        <div class="overflow-hidden rounded-xl border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-white/5">
+                            @if ($image_upload)
+                                <img src="{{ $image_upload->temporaryUrl() }}" alt="Gallery image preview" class="h-56 w-full object-cover">
+                            @else
+                                <img src="{{ \App\Support\WebsiteContent::assetPath($image) ?? $image }}" alt="Gallery image preview" class="h-56 w-full object-cover">
+                            @endif
+                        </div>
+                    </div>
+                @endif
                 <x-ui.input label="Video URL" name="video_url" wire:model.live="video_url" />
                 <x-ui.input label="Sort Order" type="number" name="sort_order" wire:model.live="sort_order" />
                 <div class="md:col-span-2"><x-ui.textarea label="Description" name="description" wire:model.live="description" /></div>

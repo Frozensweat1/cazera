@@ -83,9 +83,9 @@ class SettingsIndex extends Component
             'meta_title' => 'nullable|string|max:255',
             'meta_description' => 'nullable|string|max:1024',
             'content_json' => 'nullable|string',
-            'logo' => 'nullable|image|max:5120',
-            'favicon' => 'nullable|image|max:5120',
-            'hero_background' => 'nullable|image|max:5120',
+            'logo' => 'nullable|file|mimes:jpg,jpeg,png,gif,webp,avif,svg|max:5120',
+            'favicon' => 'nullable|file|mimes:jpg,jpeg,png,gif,webp,avif,svg,ico|max:5120',
+            'hero_background' => 'nullable|file|mimes:jpg,jpeg,png,gif,webp,avif,svg|max:5120',
         ];
     }
 

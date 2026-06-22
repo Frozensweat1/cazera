@@ -11,6 +11,8 @@ use Livewire\Component;
 use Livewire\WithFileUploads;
 use Livewire\WithPagination;
 use Jantinnerezo\LivewireAlert\Facades\LivewireAlert;
+use Illuminate\Support\Facades\Log;
+use Throwable;
 
 class Index extends Component
 {
@@ -189,50 +191,67 @@ class Index extends Component
 
     public function save()
     {
-        $this->validate();
-        $this->authorizeBranch($this->branch_id);
-        $this->authorizeModule($this->module_id, $this->branch_id);
+        try {
+            $this->validate();
+            $this->authorizeBranch($this->branch_id);
+            $this->authorizeModule($this->module_id, $this->branch_id);
 
-        $imageUrl = $this->image_url;
+            $imageUrl = $this->image_url;
 
-        if ($this->image_upload) {
-            if ($this->categoryId) {
-                $category = Category::accessible()->findOrFail($this->categoryId);
-                $this->deleteStoredImage($category->image_url);
+            if ($this->image_upload) {
+                try {
+                    if ($this->categoryId) {
+                        $category = Category::accessible()->findOrFail($this->categoryId);
+                        $this->deleteStoredImage($category->image_url);
+                    }
+
+                    $imageUrl = $this->image_upload->store('categories', 'public');
+                } catch (Throwable $e) {
+                    Log::error('Categories::save image store failed', ['exception' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
+                    LivewireAlert::title('Image Upload Failed')
+                        ->text('Unable to store uploaded image. Please try a different file or use an external URL.')
+                        ->error()
+                        ->show();
+                    return;
+                }
             }
 
-            $imageUrl = $this->image_upload->store('categories', 'public');
+            Category::updateOrCreate(
+                ['id' => $this->categoryId],
+                [
+                    'branch_id' => $this->branch_id,
+
+                    'module_id' => $this->module_id,
+
+                    'name' => $this->name,
+
+                    'slug' => $this->slug,
+
+                    'description' => $this->description,
+
+                    'image_url' => $imageUrl,
+
+                    'is_active' => $this->is_active,
+
+                    'sort_order' => $this->sort_order,
+                ]
+            );
+
+            $this->dispatch('close-modal', 'category-form');
+
+            LivewireAlert::title('Category Saved')
+                ->text('Category saved successfully.')
+                ->success()
+                ->show();
+
+            $this->resetForm();
+        } catch (Throwable $e) {
+            Log::error('Categories::save failed', ['exception' => $e->getMessage(), 'trace' => $e->getTraceAsString(), 'categoryId' => $this->categoryId ?? null]);
+            LivewireAlert::title('Error')
+                ->text('Unable to save category. Please try again or contact support.')
+                ->error()
+                ->show();
         }
-
-        Category::updateOrCreate(
-            ['id' => $this->categoryId],
-            [
-                'branch_id' => $this->branch_id,
-
-                'module_id' => $this->module_id,
-
-                'name' => $this->name,
-
-                'slug' => $this->slug,
-
-                'description' => $this->description,
-
-                'image_url' => $imageUrl,
-
-                'is_active' => $this->is_active,
-
-                'sort_order' => $this->sort_order,
-            ]
-        );
-
-        $this->dispatch('close-modal', 'category-form');
-
-        LivewireAlert::title('Category Saved')
-            ->text('Category saved successfully.')
-            ->success()
-            ->show();
-
-        $this->resetForm();
     }
 
     public function delete($id)

@@ -12,6 +12,8 @@ use Illuminate\Validation\Rule;
 use Jantinnerezo\LivewireAlert\Facades\LivewireAlert;
 use Livewire\Component;
 use Livewire\WithPagination;
+use Illuminate\Support\Facades\Log;
+use Throwable;
 
 class DebtorsIndex extends Component
 {
@@ -71,47 +73,55 @@ class DebtorsIndex extends Component
 
     public function collectPayment(): void
     {
-        $this->validate([
-            'paymentSaleId' => 'required|exists:sales,id',
-            'payment_method' => ['required', Rule::in(['cash', 'mobile_money', 'card', 'bank_transfer', 'wallet'])],
-            'payment_amount' => 'required|numeric|min:0.01',
-            'payment_reference' => 'nullable|string|max:255',
-        ]);
-
-        DB::transaction(function () {
-            $sale = Sale::accessible()
-                ->where('is_debt', true)
-                ->where('status', '!=', 'refunded')
-                ->lockForUpdate()
-                ->findOrFail($this->paymentSaleId);
-            $amount = round((float) $this->payment_amount, 2);
-
-            abort_if($amount > (float) $sale->remaining_balance, 422, 'Payment cannot exceed outstanding balance.');
-
-            $register = $this->openRegisterFor($sale);
-            $this->recordPayment($sale, $register, $this->payment_method, $amount, $this->payment_reference ?: null);
-
-            $paid = round((float) $sale->paid_amount + $amount, 2);
-            $remaining = round((float) $sale->total - $paid, 2);
-
-            $sale->update([
-                'paid_amount' => $paid,
-                'remaining_balance' => max(0, $remaining),
-                'is_debt' => $remaining > 0,
-                'status' => $remaining <= 0 ? 'completed' : $sale->status,
-                'completed_at' => $remaining <= 0 ? now() : $sale->completed_at,
+        try {
+            $this->validate([
+                'paymentSaleId' => 'required|exists:sales,id',
+                'payment_method' => ['required', Rule::in(['cash', 'mobile_money', 'card', 'bank_transfer', 'wallet'])],
+                'payment_amount' => 'required|numeric|min:0.01',
+                'payment_reference' => 'nullable|string|max:255',
             ]);
-        });
 
-        $this->reset(['paymentSaleId', 'payment_reference']);
-        $this->payment_method = 'cash';
-        $this->payment_amount = 0;
-        $this->dispatch('close-modal', 'debtor-payment-modal');
+            DB::transaction(function () {
+                $sale = Sale::accessible()
+                    ->where('is_debt', true)
+                    ->where('status', '!=', 'refunded')
+                    ->lockForUpdate()
+                    ->findOrFail($this->paymentSaleId);
+                $amount = round((float) $this->payment_amount, 2);
 
-        LivewireAlert::title('Payment Recorded')
-            ->text('The debtor balance has been updated.')
-            ->success()
-            ->show();
+                abort_if($amount > (float) $sale->remaining_balance, 422, 'Payment cannot exceed outstanding balance.');
+
+                $register = $this->openRegisterFor($sale);
+                $this->recordPayment($sale, $register, $this->payment_method, $amount, $this->payment_reference ?: null);
+
+                $paid = round((float) $sale->paid_amount + $amount, 2);
+                $remaining = round((float) $sale->total - $paid, 2);
+
+                $sale->update([
+                    'paid_amount' => $paid,
+                    'remaining_balance' => max(0, $remaining),
+                    'is_debt' => $remaining > 0,
+                    'status' => $remaining <= 0 ? 'completed' : $sale->status,
+                    'completed_at' => $remaining <= 0 ? now() : $sale->completed_at,
+                ]);
+            });
+
+            $this->reset(['paymentSaleId', 'payment_reference']);
+            $this->payment_method = 'cash';
+            $this->payment_amount = 0;
+            $this->dispatch('close-modal', 'debtor-payment-modal');
+
+            LivewireAlert::title('Payment Recorded')
+                ->text('The debtor balance has been updated.')
+                ->success()
+                ->show();
+        } catch (Throwable $e) {
+            Log::error('DebtorsIndex::collectPayment failed', ['exception' => $e->getMessage(), 'trace' => $e->getTraceAsString(), 'paymentSaleId' => $this->paymentSaleId ?? null]);
+            LivewireAlert::title('Error')
+                ->text('Unable to record payment. Please try again or contact support.')
+                ->error()
+                ->show();
+        }
     }
 
     protected function openRegisterFor(Sale $sale): CashRegister

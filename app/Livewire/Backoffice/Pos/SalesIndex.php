@@ -15,6 +15,8 @@ use Illuminate\Validation\Rule;
 use Jantinnerezo\LivewireAlert\Facades\LivewireAlert;
 use Livewire\Component;
 use Livewire\WithPagination;
+use Illuminate\Support\Facades\Log;
+use Throwable;
 
 class SalesIndex extends Component
 {
@@ -109,40 +111,48 @@ class SalesIndex extends Component
 
     public function collectPayment(): void
     {
-        $this->validate([
-            'paymentSaleId' => 'required|exists:sales,id',
-            'payment_method' => ['required', Rule::in(['cash', 'mobile_money', 'card', 'bank_transfer', 'wallet'])],
-            'payment_amount' => 'required|numeric|min:0.01',
-            'payment_reference' => 'nullable|string|max:255',
-        ]);
-
-        DB::transaction(function () {
-            $sale = Sale::accessible()->lockForUpdate()->findOrFail($this->paymentSaleId);
-            $amount = round((float) $this->payment_amount, 2);
-
-            abort_if($amount > (float) $sale->remaining_balance, 422, 'Payment cannot exceed outstanding balance.');
-
-            $register = $this->openRegisterFor($sale);
-            $this->recordPayment($sale, $register, $this->payment_method, $amount, $this->payment_reference);
-
-            $paid = round((float) $sale->paid_amount + $amount, 2);
-            $remaining = round((float) $sale->total - $paid, 2);
-
-            $sale->update([
-                'paid_amount' => $paid,
-                'remaining_balance' => max(0, $remaining),
-                'is_debt' => $remaining > 0,
-                'status' => $remaining <= 0 ? 'completed' : $sale->status,
-                'completed_at' => $remaining <= 0 ? now() : $sale->completed_at,
+        try {
+            $this->validate([
+                'paymentSaleId' => 'required|exists:sales,id',
+                'payment_method' => ['required', Rule::in(['cash', 'mobile_money', 'card', 'bank_transfer', 'wallet'])],
+                'payment_amount' => 'required|numeric|min:0.01',
+                'payment_reference' => 'nullable|string|max:255',
             ]);
-        });
 
-        $this->dispatch('close-modal', 'sales-payment-modal');
+            DB::transaction(function () {
+                $sale = Sale::accessible()->lockForUpdate()->findOrFail($this->paymentSaleId);
+                $amount = round((float) $this->payment_amount, 2);
 
-        LivewireAlert::title('Payment Recorded')
-            ->text('Outstanding balance has been updated.')
-            ->success()
-            ->show();
+                abort_if($amount > (float) $sale->remaining_balance, 422, 'Payment cannot exceed outstanding balance.');
+
+                $register = $this->openRegisterFor($sale);
+                $this->recordPayment($sale, $register, $this->payment_method, $amount, $this->payment_reference);
+
+                $paid = round((float) $sale->paid_amount + $amount, 2);
+                $remaining = round((float) $sale->total - $paid, 2);
+
+                $sale->update([
+                    'paid_amount' => $paid,
+                    'remaining_balance' => max(0, $remaining),
+                    'is_debt' => $remaining > 0,
+                    'status' => $remaining <= 0 ? 'completed' : $sale->status,
+                    'completed_at' => $remaining <= 0 ? now() : $sale->completed_at,
+                ]);
+            });
+
+            $this->dispatch('close-modal', 'sales-payment-modal');
+
+            LivewireAlert::title('Payment Recorded')
+                ->text('Outstanding balance has been updated.')
+                ->success()
+                ->show();
+        } catch (Throwable $e) {
+            Log::error('SalesIndex::collectPayment failed', ['exception' => $e->getMessage(), 'trace' => $e->getTraceAsString(), 'paymentSaleId' => $this->paymentSaleId ?? null]);
+            LivewireAlert::title('Error')
+                ->text('Unable to record payment. Please try again or contact support.')
+                ->error()
+                ->show();
+        }
     }
 
     public function openRefund($saleId): void
@@ -159,110 +169,118 @@ class SalesIndex extends Component
 
     public function processRefund(): void
     {
-        $this->validate([
-            'refundSaleId' => 'required|exists:sales,id',
-            'refund_method' => ['required', Rule::in(['cash', 'mobile_money', 'card', 'bank_transfer', 'wallet'])],
-            'refund_amount' => 'required|numeric|min:0.01',
-            'refund_reason' => 'nullable|string|max:500',
-        ]);
-
-        DB::transaction(function () {
-            $sale = Sale::accessible()
-                ->with(['items.menuItem', 'customer'])
-                ->lockForUpdate()
-                ->findOrFail($this->refundSaleId);
-            $amount = round((float) $this->refund_amount, 2);
-
-            abort_if($amount > (float) $sale->paid_amount, 422, 'Refund cannot exceed paid amount.');
-
-            $register = $this->openRegisterFor($sale);
-
-            CashRegisterTransaction::create([
-                'cash_register_id' => $register->id,
-                'branch_id' => $sale->branch_id,
-                'module_id' => $sale->module_id,
-                'sale_id' => $sale->id,
-                'performed_by' => auth()->id(),
-                'type' => 'refund',
-                'amount' => -1 * $amount,
-                'notes' => $this->refund_reason ?: 'Refund for sale ' . $sale->sale_number,
-                'transaction_date' => now(),
+        try {
+            $this->validate([
+                'refundSaleId' => 'required|exists:sales,id',
+                'refund_method' => ['required', Rule::in(['cash', 'mobile_money', 'card', 'bank_transfer', 'wallet'])],
+                'refund_amount' => 'required|numeric|min:0.01',
+                'refund_reason' => 'nullable|string|max:500',
             ]);
 
-            $register->addExpectedBalanceForTransaction('refund', -1 * $amount);
+            DB::transaction(function () {
+                $sale = Sale::accessible()
+                    ->with(['items.menuItem', 'customer'])
+                    ->lockForUpdate()
+                    ->findOrFail($this->refundSaleId);
+                $amount = round((float) $this->refund_amount, 2);
 
-            Payment::create([
-                'sale_id' => $sale->id,
-                'branch_id' => $sale->branch_id,
-                'module_id' => $sale->module_id,
-                'cash_register_id' => $register->id,
-                'received_by' => auth()->id(),
-                'method' => $this->refund_method,
-                'amount' => $amount,
-                'transaction_reference' => null,
-                'status' => 'refunded',
-                'notes' => $this->refund_reason,
-                'paid_at' => now(),
-            ]);
+                abort_if($amount > (float) $sale->paid_amount, 422, 'Refund cannot exceed paid amount.');
 
-            foreach ($sale->items as $item) {
-                if (! $item->menuItem?->is_trackable) {
-                    continue;
-                }
+                $register = $this->openRegisterFor($sale);
 
-                $menuItem = $item->menuItem()->lockForUpdate()->first();
-
-                if (! $menuItem?->is_trackable) {
-                    continue;
-                }
-
-                $before = (int) $menuItem->quantity;
-                $after = $before + (int) $item->qty;
-
-                $menuItem->update([
-                    'quantity' => $after,
-                    'status' => $menuItem->status === 'out_of_stock' && $after > 0 ? 'available' : $menuItem->status,
-                ]);
-
-                MenuItemAdjustment::create([
+                CashRegisterTransaction::create([
+                    'cash_register_id' => $register->id,
                     'branch_id' => $sale->branch_id,
                     'module_id' => $sale->module_id,
-                    'menu_item_id' => $item->menu_item_id,
                     'sale_id' => $sale->id,
                     'performed_by' => auth()->id(),
                     'type' => 'refund',
-                    'quantity_before' => $before,
-                    'quantity_after' => $after,
-                    'change_qty' => (int) $item->qty,
-                    'reference_no' => $sale->sale_number,
-                    'reason' => 'Refund return',
+                    'amount' => -1 * $amount,
+                    'notes' => $this->refund_reason ?: 'Refund for sale ' . $sale->sale_number,
                     'transaction_date' => now(),
                 ]);
-            }
 
-            $paid = round((float) $sale->paid_amount - $amount, 2);
-            $remaining = round((float) $sale->total - $paid, 2);
+                $register->addExpectedBalanceForTransaction('refund', -1 * $amount);
 
-            $sale->update([
-                'paid_amount' => max(0, $paid),
-                'remaining_balance' => max(0, $remaining),
-                'is_debt' => false,
-                'status' => 'refunded',
-            ]);
-
-            if ($sale->customer) {
-                Customer::whereKey($sale->customer_id)->update([
-                    'total_spent' => DB::raw('GREATEST(COALESCE(total_spent, 0) - ' . $amount . ', 0)'),
+                Payment::create([
+                    'sale_id' => $sale->id,
+                    'branch_id' => $sale->branch_id,
+                    'module_id' => $sale->module_id,
+                    'cash_register_id' => $register->id,
+                    'received_by' => auth()->id(),
+                    'method' => $this->refund_method,
+                    'amount' => $amount,
+                    'transaction_reference' => null,
+                    'status' => 'refunded',
+                    'notes' => $this->refund_reason,
+                    'paid_at' => now(),
                 ]);
-            }
-        });
 
-        $this->dispatch('close-modal', 'sales-refund-modal');
+                foreach ($sale->items as $item) {
+                    if (! $item->menuItem?->is_trackable) {
+                        continue;
+                    }
 
-        LivewireAlert::title('Refund Processed')
-            ->text('Refund has been recorded successfully.')
-            ->success()
-            ->show();
+                    $menuItem = $item->menuItem()->lockForUpdate()->first();
+
+                    if (! $menuItem?->is_trackable) {
+                        continue;
+                    }
+
+                    $before = (int) $menuItem->quantity;
+                    $after = $before + (int) $item->qty;
+
+                    $menuItem->update([
+                        'quantity' => $after,
+                        'status' => $menuItem->status === 'out_of_stock' && $after > 0 ? 'available' : $menuItem->status,
+                    ]);
+
+                    MenuItemAdjustment::create([
+                        'branch_id' => $sale->branch_id,
+                        'module_id' => $sale->module_id,
+                        'menu_item_id' => $item->menu_item_id,
+                        'sale_id' => $sale->id,
+                        'performed_by' => auth()->id(),
+                        'type' => 'refund',
+                        'quantity_before' => $before,
+                        'quantity_after' => $after,
+                        'change_qty' => (int) $item->qty,
+                        'reference_no' => $sale->sale_number,
+                        'reason' => 'Refund return',
+                        'transaction_date' => now(),
+                    ]);
+                }
+
+                $paid = round((float) $sale->paid_amount - $amount, 2);
+                $remaining = round((float) $sale->total - $paid, 2);
+
+                $sale->update([
+                    'paid_amount' => max(0, $paid),
+                    'remaining_balance' => max(0, $remaining),
+                    'is_debt' => false,
+                    'status' => 'refunded',
+                ]);
+
+                if ($sale->customer) {
+                    Customer::whereKey($sale->customer_id)->update([
+                        'total_spent' => DB::raw('GREATEST(COALESCE(total_spent, 0) - ' . $amount . ', 0)'),
+                    ]);
+                }
+            });
+
+            $this->dispatch('close-modal', 'sales-refund-modal');
+
+            LivewireAlert::title('Refund Processed')
+                ->text('Refund has been recorded successfully.')
+                ->success()
+                ->show();
+        } catch (Throwable $e) {
+            Log::error('SalesIndex::processRefund failed', ['exception' => $e->getMessage(), 'trace' => $e->getTraceAsString(), 'refundSaleId' => $this->refundSaleId ?? null]);
+            LivewireAlert::title('Error')
+                ->text('Unable to process refund. Please try again or contact support.')
+                ->error()
+                ->show();
+        }
     }
 
     protected function openRegisterFor(Sale $sale): CashRegister

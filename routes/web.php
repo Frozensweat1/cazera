@@ -69,6 +69,7 @@ use App\Livewire\Website\EventShow as WebsiteEventShow;
 use App\Livewire\Website\Events as WebsiteEvents;
 use App\Livewire\Website\Gallery as WebsiteGallery;
 use App\Livewire\Website\Home as WebsiteHome;
+use App\Livewire\Website\MenuItems as WebsiteMenuItems;
 use App\Livewire\Website\MenuItemShow as WebsiteMenuItemShow;
 use App\Livewire\Website\Reviews as WebsiteReviews;
 use Illuminate\Http\Request;
@@ -94,6 +95,9 @@ Route::get('/branches/{slug}', WebsiteBranchShow::class)
 
 Route::get('/gallery/{category?}', WebsiteGallery::class)
     ->name('website.gallery');
+
+Route::get('/menu', WebsiteMenuItems::class)
+    ->name('website.menu');
 
 Route::get('/events', WebsiteEvents::class)
     ->name('website.events');

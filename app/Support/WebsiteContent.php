@@ -118,7 +118,7 @@ class WebsiteContent
         return $categories->isNotEmpty() ? $categories : collect(self::fallbackCategories());
     }
 
-    public static function menuItems(?int $branchId = null): Collection
+    public static function menuItems(?int $branchId = null, ?int $limit = 9): Collection
     {
         if (! Schema::hasTable('menu_items')) {
             return collect(self::fallbackMenuItems());
@@ -127,7 +127,7 @@ class WebsiteContent
         $items = MenuItem::query()
             ->with(['category', 'branch', 'module'])
             ->when($branchId, fn ($query) => $query->where('branch_id', $branchId))
-            ->when(! $branchId, fn ($query) => $query->limit(9))
+            ->when(is_null($branchId) && $limit, fn ($query) => $query->limit($limit))
             ->whereIn('status', ['active', 'available', 'published'])
             ->orderBy('sort_order')
             ->orderBy('name')

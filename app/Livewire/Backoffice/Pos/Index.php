@@ -20,6 +20,8 @@ use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Livewire\Component;
 use Jantinnerezo\LivewireAlert\Facades\LivewireAlert;
+use Illuminate\Support\Facades\Log;
+use Throwable;
 
 class Index extends Component
 {
@@ -332,359 +334,383 @@ class Index extends Component
 
     public function recordRecentPayment(): void
     {
-        $this->validate([
-            'recentPaymentSaleId' => 'required|exists:sales,id',
-            'recent_payment_method' => ['required', Rule::in(['cash', 'mobile_money', 'card', 'bank_transfer', 'wallet'])],
-            'recent_payment_amount' => 'required|numeric|min:0.01',
-            'recent_payment_reference' => 'nullable|string|max:255',
-        ]);
-
-        DB::transaction(function () {
-            $sale = Sale::accessible()
-                ->where('status', '!=', 'refunded')
-                ->lockForUpdate()
-                ->findOrFail($this->recentPaymentSaleId);
-
-            $amount = round((float) $this->recent_payment_amount, 2);
-            abort_if($amount > (float) $sale->remaining_balance, 422, 'Payment cannot exceed outstanding balance.');
-
-            $cashRegister = $this->openRegisterFor($sale->branch_id, $sale->module_id, 'Auto-opened POS payment register');
-
-            CashRegisterTransaction::create([
-                'cash_register_id' => $cashRegister->id,
-                'branch_id' => $sale->branch_id,
-                'module_id' => $sale->module_id,
-                'sale_id' => $sale->id,
-                'performed_by' => auth()->id(),
-                'type' => 'sale',
-                'amount' => $amount,
-                'notes' => 'Outstanding payment for sale ' . $sale->sale_number,
-                'transaction_date' => now(),
+        try {
+            $this->validate([
+                'recentPaymentSaleId' => 'required|exists:sales,id',
+                'recent_payment_method' => ['required', Rule::in(['cash', 'mobile_money', 'card', 'bank_transfer', 'wallet'])],
+                'recent_payment_amount' => 'required|numeric|min:0.01',
+                'recent_payment_reference' => 'nullable|string|max:255',
             ]);
 
-            $cashRegister->addExpectedBalanceForTransaction('sale', $amount);
+            DB::transaction(function () {
+                $sale = Sale::accessible()
+                    ->where('status', '!=', 'refunded')
+                    ->lockForUpdate()
+                    ->findOrFail($this->recentPaymentSaleId);
 
-            Payment::create([
-                'sale_id' => $sale->id,
-                'branch_id' => $sale->branch_id,
-                'module_id' => $sale->module_id,
-                'cash_register_id' => $cashRegister->id,
-                'received_by' => auth()->id(),
-                'method' => $this->recent_payment_method,
-                'amount' => $amount,
-                'transaction_reference' => $this->recent_payment_reference ?: null,
-                'status' => 'completed',
-                'notes' => 'Outstanding sale payment recorded from POS recent sales.',
-                'paid_at' => now(),
-            ]);
+                $amount = round((float) $this->recent_payment_amount, 2);
+                abort_if($amount > (float) $sale->remaining_balance, 422, 'Payment cannot exceed outstanding balance.');
 
-            $paid = round((float) $sale->paid_amount + $amount, 2);
-            $remaining = round((float) $sale->total - $paid, 2);
+                $cashRegister = $this->openRegisterFor($sale->branch_id, $sale->module_id, 'Auto-opened POS payment register');
 
-            $sale->update([
-                'paid_amount' => $paid,
-                'remaining_balance' => max(0, $remaining),
-                'is_debt' => $remaining > 0,
-                'status' => $remaining <= 0 ? 'completed' : $sale->status,
-                'completed_at' => $remaining <= 0 ? now() : $sale->completed_at,
-            ]);
-        });
+                CashRegisterTransaction::create([
+                    'cash_register_id' => $cashRegister->id,
+                    'branch_id' => $sale->branch_id,
+                    'module_id' => $sale->module_id,
+                    'sale_id' => $sale->id,
+                    'performed_by' => auth()->id(),
+                    'type' => 'sale',
+                    'amount' => $amount,
+                    'notes' => 'Outstanding payment for sale ' . $sale->sale_number,
+                    'transaction_date' => now(),
+                ]);
 
-        $this->reset(['recentPaymentSaleId', 'recent_payment_reference']);
-        $this->recent_payment_method = 'cash';
-        $this->recent_payment_amount = 0;
-        $this->dispatch('close-modal', 'recent-sale-payment-modal');
+                $cashRegister->addExpectedBalanceForTransaction('sale', $amount);
 
-        LivewireAlert::title('Payment Recorded')
-            ->text('The sale balance has been updated.')
-            ->success()
-            ->show();
+                Payment::create([
+                    'sale_id' => $sale->id,
+                    'branch_id' => $sale->branch_id,
+                    'module_id' => $sale->module_id,
+                    'cash_register_id' => $cashRegister->id,
+                    'received_by' => auth()->id(),
+                    'method' => $this->recent_payment_method,
+                    'amount' => $amount,
+                    'transaction_reference' => $this->recent_payment_reference ?: null,
+                    'status' => 'completed',
+                    'notes' => 'Outstanding sale payment recorded from POS recent sales.',
+                    'paid_at' => now(),
+                ]);
+
+                $paid = round((float) $sale->paid_amount + $amount, 2);
+                $remaining = round((float) $sale->total - $paid, 2);
+
+                $sale->update([
+                    'paid_amount' => $paid,
+                    'remaining_balance' => max(0, $remaining),
+                    'is_debt' => $remaining > 0,
+                    'status' => $remaining <= 0 ? 'completed' : $sale->status,
+                    'completed_at' => $remaining <= 0 ? now() : $sale->completed_at,
+                ]);
+            });
+
+            $this->reset(['recentPaymentSaleId', 'recent_payment_reference']);
+            $this->recent_payment_method = 'cash';
+            $this->recent_payment_amount = 0;
+            $this->dispatch('close-modal', 'recent-sale-payment-modal');
+
+            LivewireAlert::title('Payment Recorded')
+                ->text('The sale balance has been updated.')
+                ->success()
+                ->show();
+        } catch (Throwable $e) {
+            Log::error('recordRecentPayment failed', ['exception' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
+            LivewireAlert::title('Error')
+                ->text('Unable to record payment. Please try again or contact support.')
+                ->error()
+                ->show();
+        }
     }
 
     public function createCustomer()
     {
-        $this->validate([
-            'new_customer_name' => 'required|string|max:255',
-            'new_customer_email' => [
-                'nullable',
-                'email',
-                'max:255',
-                Rule::unique('customers', 'email'),
-            ],
-            'new_customer_phone' => [
-                'nullable',
-                'string',
-                'max:20',
-                Rule::unique('customers', 'phone'),
-            ],
-            'new_customer_address' => 'nullable|string|max:500',
-        ]);
+        try {
+            $this->validate([
+                'new_customer_name' => 'required|string|max:255',
+                'new_customer_email' => [
+                    'nullable',
+                    'email',
+                    'max:255',
+                    Rule::unique('customers', 'email'),
+                ],
+                'new_customer_phone' => [
+                    'nullable',
+                    'string',
+                    'max:20',
+                    Rule::unique('customers', 'phone'),
+                ],
+                'new_customer_address' => 'nullable|string|max:500',
+            ]);
 
-        $branchId = session('branch_id');
+            $branchId = session('branch_id');
 
-        $customer = Customer::create([
-            'branch_id' => $branchId,
-            'name' => $this->new_customer_name,
-            'email' => $this->new_customer_email,
-            'phone' => $this->new_customer_phone,
-            'address' => $this->new_customer_address,
-            'status' => 'active',
-        ]);
+            $customer = Customer::create([
+                'branch_id' => $branchId,
+                'name' => $this->new_customer_name,
+                'email' => $this->new_customer_email,
+                'phone' => $this->new_customer_phone,
+                'address' => $this->new_customer_address,
+                'status' => 'active',
+            ]);
 
-        $this->customer_id = $customer->id;
-        $this->new_customer_name = null;
-        $this->new_customer_email = null;
-        $this->new_customer_phone = null;
-        $this->new_customer_address = null;
+            $this->customer_id = $customer->id;
+            $this->new_customer_name = null;
+            $this->new_customer_email = null;
+            $this->new_customer_phone = null;
+            $this->new_customer_address = null;
 
-        LivewireAlert::title('Customer Added')
-            ->text('Customer registered successfully and selected for this sale.')
-            ->success()
-            ->show();
+            LivewireAlert::title('Customer Added')
+                ->text('Customer registered successfully and selected for this sale.')
+                ->success()
+                ->show();
+        } catch (Throwable $e) {
+            Log::error('createCustomer failed', ['exception' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
+            LivewireAlert::title('Error')
+                ->text('Unable to add customer. Please try again.')
+                ->error()
+                ->show();
+        }
     }
 
     public function saveSale($moduleId)
     {
-        $branchId = session('branch_id');
-        $this->authorizeBranch($branchId);
-        $this->authorizeModule($moduleId, $branchId);
+        try {
+            $branchId = session('branch_id');
+            $this->authorizeBranch($branchId);
+            $this->authorizeModule($moduleId, $branchId);
 
-        $cart = collect($this->cart[$moduleId] ?? []);
+            $cart = collect($this->cart[$moduleId] ?? []);
 
-        if ($cart->isEmpty()) {
-            LivewireAlert::title('No Items')
-                ->text('Add at least one menu item to the order.')
-                ->warning()
-                ->show();
+            if ($cart->isEmpty()) {
+                LivewireAlert::title('No Items')
+                    ->text('Add at least one menu item to the order.')
+                    ->warning()
+                    ->show();
 
-            return;
-        }
+                return;
+            }
 
-        $this->validate([
-            'customer_id' => 'nullable|exists:customers,id',
-            'sale_type' => 'required|in:dine_in,takeaway,delivery,online',
-            'splitPayments' => 'array|min:1',
-            'splitPayments.*.method' => 'required|in:cash,mobile_money,card,bank_transfer,wallet,credit_sale',
-            'splitPayments.*.amount' => 'required|numeric|min:0',
-            'splitPayments.*.transaction_reference' => 'nullable|string|max:255',
-            'discount_id' => 'nullable|exists:discounts,id',
-            'notes' => 'nullable|string|max:1000',
-        ]);
+            $this->validate([
+                'customer_id' => 'nullable|exists:customers,id',
+                'sale_type' => 'required|in:dine_in,takeaway,delivery,online',
+                'splitPayments' => 'array|min:1',
+                'splitPayments.*.method' => 'required|in:cash,mobile_money,card,bank_transfer,wallet,credit_sale',
+                'splitPayments.*.amount' => 'required|numeric|min:0',
+                'splitPayments.*.transaction_reference' => 'nullable|string|max:255',
+                'discount_id' => 'nullable|exists:discounts,id',
+                'notes' => 'nullable|string|max:1000',
+            ]);
 
-        $module = Module::findOrFail($moduleId);
-        $menuItems = MenuItem::where('branch_id', $branchId)
-            ->where('module_id', $module->id)
-            ->whereIn('id', $cart->pluck('menu_item_id')->unique())
-            ->get()
-            ->keyBy('id');
-
-        abort_if($menuItems->count() !== $cart->pluck('menu_item_id')->unique()->count(), 422, 'One or more menu items are no longer available.');
-
-        $cart = $cart->map(function ($line) use ($menuItems) {
-            $menuItem = $menuItems->get($line['menu_item_id']);
-
-            abort_if(! $menuItem || $menuItem->status !== 'available', 422, 'One or more menu items are no longer available.');
-            abort_if($menuItem->is_trackable && (float) $line['qty'] > (float) $menuItem->quantity, 422, "{$menuItem->name} does not have enough stock.");
-
-            $qty = max(1, (int) $line['qty']);
-            $unitPrice = round((float) $menuItem->price, 2);
-
-            return [
-                'menu_item_id' => $menuItem->id,
-                'item_name' => $menuItem->name,
-                'qty' => $qty,
-                'unit_price' => $unitPrice,
-                'tax' => 0,
-                'discount' => 0,
-                'subtotal' => round($qty * $unitPrice, 2),
-            ];
-        });
-
-        $subtotal = round((float) $cart->sum('subtotal'), 2);
-        $serviceChargeRate = data_get($module->pos_settings, 'service_charge', 0) / 100;
-        $serviceCharge = round($subtotal * $serviceChargeRate, 2);
-        $billBeforeDiscount = round($subtotal + $serviceCharge, 2);
-        $tax = $this->displayTaxAmount($branchId, $module->id, $billBeforeDiscount);
-        $discount = $this->selectedDiscountAmount($branchId, $module->id, $billBeforeDiscount);
-        $total = round(max(0, $billBeforeDiscount - $discount), 2);
-        $payments = collect($this->splitPayments)
-            ->map(fn ($payment) => [
-                'method' => $payment['method'] ?? 'cash',
-                'amount' => ($payment['method'] ?? 'cash') === 'credit_sale'
-                    ? 0
-                    : round((float) ($payment['amount'] ?? 0), 2),
-                'transaction_reference' => $payment['transaction_reference'] ?? null,
-            ])
-            ->filter(fn ($payment) => $payment['method'] !== 'credit_sale' && $payment['amount'] > 0)
-            ->values();
-
-        $paidAmount = round($payments->sum('amount'), 2);
-
-        if ($paidAmount > $total) {
-            LivewireAlert::title('Payment Exceeds Total')
-                ->text('Split payment amounts cannot be greater than the sale total.')
-                ->warning()
-                ->show();
-
-            return;
-        }
-
-        $remaining = round($total - $paidAmount, 2);
-        $isDebt = $remaining > 0;
-        $saleStatus = $this->notifyKitchen ? 'confirmed' : ($isDebt ? 'served' : 'completed');
-        $saleItemStatus = $this->notifyKitchen ? 'pending' : 'served';
-
-        $sale = DB::transaction(function () use ($branchId, $module, $cart, $subtotal, $tax, $discount, $serviceCharge, $total, $paidAmount, $remaining, $isDebt, $saleStatus, $saleItemStatus, $payments) {
-            $lockedItems = MenuItem::where('branch_id', $branchId)
+            $module = Module::findOrFail($moduleId);
+            $menuItems = MenuItem::where('branch_id', $branchId)
                 ->where('module_id', $module->id)
                 ->whereIn('id', $cart->pluck('menu_item_id')->unique())
-                ->lockForUpdate()
                 ->get()
                 ->keyBy('id');
 
-            foreach ($cart as $line) {
-                $menuItem = $lockedItems->get($line['menu_item_id']);
+            abort_if($menuItems->count() !== $cart->pluck('menu_item_id')->unique()->count(), 422, 'One or more menu items are no longer available.');
+
+            $cart = $cart->map(function ($line) use ($menuItems) {
+                $menuItem = $menuItems->get($line['menu_item_id']);
+
                 abort_if(! $menuItem || $menuItem->status !== 'available', 422, 'One or more menu items are no longer available.');
                 abort_if($menuItem->is_trackable && (float) $line['qty'] > (float) $menuItem->quantity, 422, "{$menuItem->name} does not have enough stock.");
-            }
 
-            $now = now();
-            $sale = Sale::create([
-                'branch_id' => $branchId,
-                'module_id' => $module->id,
-                'customer_id' => $this->customer_id,
-                'created_by' => auth()->id(),
-                'sale_number' => strtoupper('S' . $now->format('YmdHis') . Str::random(3)),
-                'type' => $this->sale_type,
-                'status' => $saleStatus,
-                'subtotal' => $subtotal,
-                'tax' => $tax,
-                'discount' => $discount,
-                'service_charge' => $serviceCharge,
-                'total' => $total,
-                'paid_amount' => $paidAmount,
-                'remaining_balance' => $remaining,
-                'is_debt' => $isDebt,
-                'notes' => $this->notes,
-                'sale_date' => $now,
-                'served_at' => $saleStatus === 'served' ? $now : null,
-                'completed_at' => $saleStatus === 'completed' ? $now : null,
-            ]);
+                $qty = max(1, (int) $line['qty']);
+                $unitPrice = round((float) $menuItem->price, 2);
 
-            foreach ($cart as $line) {
-                SaleItem::create([
-                    'sale_id' => $sale->id,
-                    'branch_id' => $branchId,
-                    'module_id' => $module->id,
-                    'menu_item_id' => $line['menu_item_id'],
-                    'item_name' => $line['item_name'],
-                    'sku' => null,
-                    'qty' => $line['qty'],
-                    'unit_price' => $line['unit_price'],
+                return [
+                    'menu_item_id' => $menuItem->id,
+                    'item_name' => $menuItem->name,
+                    'qty' => $qty,
+                    'unit_price' => $unitPrice,
                     'tax' => 0,
                     'discount' => 0,
-                    'subtotal' => $line['subtotal'],
-                    'total' => $line['subtotal'],
-                    'status' => $saleItemStatus,
-                    'is_kitchen_notified' => $this->notifyKitchen,
-                    'kitchen_status' => $this->notifyKitchen ? 'queued' : 'completed',
-                    'notes' => null,
-                    'served_at' => $saleItemStatus === 'served' ? $now : null,
-                ]);
+                    'subtotal' => round($qty * $unitPrice, 2),
+                ];
+            });
 
-                $menuItem = $lockedItems->get($line['menu_item_id']);
+            $subtotal = round((float) $cart->sum('subtotal'), 2);
+            $serviceChargeRate = data_get($module->pos_settings, 'service_charge', 0) / 100;
+            $serviceCharge = round($subtotal * $serviceChargeRate, 2);
+            $billBeforeDiscount = round($subtotal + $serviceCharge, 2);
+            $tax = $this->displayTaxAmount($branchId, $module->id, $billBeforeDiscount);
+            $discount = $this->selectedDiscountAmount($branchId, $module->id, $billBeforeDiscount);
+            $total = round(max(0, $billBeforeDiscount - $discount), 2);
+            $payments = collect($this->splitPayments)
+                ->map(fn ($payment) => [
+                    'method' => $payment['method'] ?? 'cash',
+                    'amount' => ($payment['method'] ?? 'cash') === 'credit_sale'
+                        ? 0
+                        : round((float) ($payment['amount'] ?? 0), 2),
+                    'transaction_reference' => $payment['transaction_reference'] ?? null,
+                ])
+                ->filter(fn ($payment) => $payment['method'] !== 'credit_sale' && $payment['amount'] > 0)
+                ->values();
 
-                if ($menuItem->is_trackable) {
-                    $quantityBefore = (int) ($menuItem->quantity ?? 0);
-                    $quantityAfter = $quantityBefore - (int) $line['qty'];
+            $paidAmount = round($payments->sum('amount'), 2);
 
-                    MenuItemAdjustment::create([
-                        'branch_id' => $branchId,
-                        'module_id' => $module->id,
-                        'menu_item_id' => $menuItem->id,
-                        'sale_id' => $sale->id,
-                        'performed_by' => auth()->id(),
-                        'type' => 'sale',
-                        'change_qty' => -1 * abs((int) $line['qty']),
-                        'quantity_before' => $quantityBefore,
-                        'quantity_after' => $quantityAfter,
-                        'reference_no' => $sale->sale_number,
-                        'notes' => 'Inventory reduction for sale ' . $sale->sale_number,
-                        'transaction_date' => $now,
-                    ]);
+            if ($paidAmount > $total) {
+                LivewireAlert::title('Payment Exceeds Total')
+                    ->text('Split payment amounts cannot be greater than the sale total.')
+                    ->warning()
+                    ->show();
 
-                    $menuItem->update([
-                        'quantity' => $quantityAfter,
-                        'status' => $quantityAfter <= 0 ? 'out_of_stock' : $menuItem->status,
-                    ]);
-                }
+                return;
             }
 
-            if ($paidAmount > 0) {
-                $cashRegister = $this->openRegisterFor($branchId, $module->id, 'Auto-opened POS register');
+            $remaining = round($total - $paidAmount, 2);
+            $isDebt = $remaining > 0;
+            $saleStatus = $this->notifyKitchen ? 'confirmed' : ($isDebt ? 'served' : 'completed');
+            $saleItemStatus = $this->notifyKitchen ? 'pending' : 'served';
 
-                foreach ($payments as $payment) {
-                    CashRegisterTransaction::create([
-                        'cash_register_id' => $cashRegister->id,
+            $sale = DB::transaction(function () use ($branchId, $module, $cart, $subtotal, $tax, $discount, $serviceCharge, $total, $paidAmount, $remaining, $isDebt, $saleStatus, $saleItemStatus, $payments) {
+                $lockedItems = MenuItem::where('branch_id', $branchId)
+                    ->where('module_id', $module->id)
+                    ->whereIn('id', $cart->pluck('menu_item_id')->unique())
+                    ->lockForUpdate()
+                    ->get()
+                    ->keyBy('id');
+
+                foreach ($cart as $line) {
+                    $menuItem = $lockedItems->get($line['menu_item_id']);
+                    abort_if(! $menuItem || $menuItem->status !== 'available', 422, 'One or more menu items are no longer available.');
+                    abort_if($menuItem->is_trackable && (float) $line['qty'] > (float) $menuItem->quantity, 422, "{$menuItem->name} does not have enough stock.");
+                }
+
+                $now = now();
+                $sale = Sale::create([
+                    'branch_id' => $branchId,
+                    'module_id' => $module->id,
+                    'customer_id' => $this->customer_id,
+                    'created_by' => auth()->id(),
+                    'sale_number' => strtoupper('S' . $now->format('YmdHis') . Str::random(3)),
+                    'type' => $this->sale_type,
+                    'status' => $saleStatus,
+                    'subtotal' => $subtotal,
+                    'tax' => $tax,
+                    'discount' => $discount,
+                    'service_charge' => $serviceCharge,
+                    'total' => $total,
+                    'paid_amount' => $paidAmount,
+                    'remaining_balance' => $remaining,
+                    'is_debt' => $isDebt,
+                    'notes' => $this->notes,
+                    'sale_date' => $now,
+                    'served_at' => $saleStatus === 'served' ? $now : null,
+                    'completed_at' => $saleStatus === 'completed' ? $now : null,
+                ]);
+
+                foreach ($cart as $line) {
+                    SaleItem::create([
+                        'sale_id' => $sale->id,
                         'branch_id' => $branchId,
                         'module_id' => $module->id,
-                        'sale_id' => $sale->id,
-                        'performed_by' => auth()->id(),
-                        'type' => 'sale',
-                        'amount' => $payment['amount'],
-                        'notes' => 'Sale ' . $sale->sale_number . ' ' . str_replace('_', ' ', $payment['method']) . ' payment',
-                        'transaction_date' => $now,
-                    ]);
-
-                    $cashRegister->addExpectedBalanceForTransaction('sale', $payment['amount']);
-
-                    Payment::create([
-                        'sale_id' => $sale->id,
-                        'branch_id' => $branchId,
-                        'module_id' => $module->id,
-                        'cash_register_id' => $cashRegister->id,
-                        'received_by' => auth()->id(),
-                        'method' => $payment['method'],
-                        'amount' => $payment['amount'],
-                        'transaction_reference' => $payment['transaction_reference'],
-                        'status' => 'completed',
+                        'menu_item_id' => $line['menu_item_id'],
+                        'item_name' => $line['item_name'],
+                        'sku' => null,
+                        'qty' => $line['qty'],
+                        'unit_price' => $line['unit_price'],
+                        'tax' => 0,
+                        'discount' => 0,
+                        'subtotal' => $line['subtotal'],
+                        'total' => $line['subtotal'],
+                        'status' => $saleItemStatus,
+                        'is_kitchen_notified' => $this->notifyKitchen,
+                        'kitchen_status' => $this->notifyKitchen ? 'queued' : 'completed',
                         'notes' => null,
-                        'paid_at' => $now,
+                        'served_at' => $saleItemStatus === 'served' ? $now : null,
+                    ]);
+
+                    $menuItem = $lockedItems->get($line['menu_item_id']);
+
+                    if ($menuItem->is_trackable) {
+                        $quantityBefore = (int) ($menuItem->quantity ?? 0);
+                        $quantityAfter = $quantityBefore - (int) $line['qty'];
+
+                        MenuItemAdjustment::create([
+                            'branch_id' => $branchId,
+                            'module_id' => $module->id,
+                            'menu_item_id' => $menuItem->id,
+                            'sale_id' => $sale->id,
+                            'performed_by' => auth()->id(),
+                            'type' => 'sale',
+                            'change_qty' => -1 * abs((int) $line['qty']),
+                            'quantity_before' => $quantityBefore,
+                            'quantity_after' => $quantityAfter,
+                            'reference_no' => $sale->sale_number,
+                            'notes' => 'Inventory reduction for sale ' . $sale->sale_number,
+                            'transaction_date' => $now,
+                        ]);
+
+                        $menuItem->update([
+                            'quantity' => $quantityAfter,
+                            'status' => $quantityAfter <= 0 ? 'out_of_stock' : $menuItem->status,
+                        ]);
+                    }
+                }
+
+                if ($paidAmount > 0) {
+                    $cashRegister = $this->openRegisterFor($branchId, $module->id, 'Auto-opened POS register');
+
+                    foreach ($payments as $payment) {
+                        CashRegisterTransaction::create([
+                            'cash_register_id' => $cashRegister->id,
+                            'branch_id' => $branchId,
+                            'module_id' => $module->id,
+                            'sale_id' => $sale->id,
+                            'performed_by' => auth()->id(),
+                            'type' => 'sale',
+                            'amount' => $payment['amount'],
+                            'notes' => 'Sale ' . $sale->sale_number . ' ' . str_replace('_', ' ', $payment['method']) . ' payment',
+                            'transaction_date' => $now,
+                        ]);
+
+                        $cashRegister->addExpectedBalanceForTransaction('sale', $payment['amount']);
+
+                        Payment::create([
+                            'sale_id' => $sale->id,
+                            'branch_id' => $branchId,
+                            'module_id' => $module->id,
+                            'cash_register_id' => $cashRegister->id,
+                            'received_by' => auth()->id(),
+                            'method' => $payment['method'],
+                            'amount' => $payment['amount'],
+                            'transaction_reference' => $payment['transaction_reference'],
+                            'status' => 'completed',
+                            'notes' => null,
+                            'paid_at' => $now,
+                        ]);
+                    }
+                }
+
+                if ($this->customer_id) {
+                    Customer::where('id', $this->customer_id)->update([
+                        'total_orders' => DB::raw('COALESCE(total_orders, 0) + 1'),
+                        'total_spent' => DB::raw('COALESCE(total_spent, 0) + ' . $sale->total),
+                        'last_order_at' => $now,
                     ]);
                 }
+
+                return $sale;
+            });
+
+            $this->cart[$moduleId] = [];
+            $this->payment_amount = 0;
+            $this->splitPayments = [
+                ['method' => 'cash', 'amount' => 0, 'transaction_reference' => null],
+            ];
+            $this->discount = 0;
+            $this->discount_id = null;
+            $this->notes = null;
+            $this->notifyKitchen = false;
+            $this->status = 'pending';
+
+            if (! $isDebt) {
+                $this->receiptSaleId = $sale->id;
+                $this->dispatch('open-modal', 'pos-receipt-modal');
             }
 
-            if ($this->customer_id) {
-                Customer::where('id', $this->customer_id)->update([
-                    'total_orders' => DB::raw('COALESCE(total_orders, 0) + 1'),
-                    'total_spent' => DB::raw('COALESCE(total_spent, 0) + ' . $sale->total),
-                    'last_order_at' => $now,
-                ]);
-            }
-
-            return $sale;
-        });
-
-        $this->cart[$moduleId] = [];
-        $this->payment_amount = 0;
-        $this->splitPayments = [
-            ['method' => 'cash', 'amount' => 0, 'transaction_reference' => null],
-        ];
-        $this->discount = 0;
-        $this->discount_id = null;
-        $this->notes = null;
-        $this->notifyKitchen = false;
-        $this->status = 'pending';
-
-        if (! $isDebt) {
-            $this->receiptSaleId = $sale->id;
-            $this->dispatch('open-modal', 'pos-receipt-modal');
+            LivewireAlert::title($isDebt ? 'Sale Created' : 'Payment Complete')
+                ->text($isDebt ? 'Order recorded with an outstanding balance.' : 'Order paid successfully. Receipt is ready.')
+                ->success()
+                ->show();
+        } catch (Throwable $e) {
+            Log::error('saveSale failed', ['exception' => $e->getMessage(), 'trace' => $e->getTraceAsString(), 'moduleId' => $moduleId]);
+            LivewireAlert::title('Error')
+                ->text('Unable to save the sale. Please try again or contact support.')
+                ->error()
+                ->show();
         }
-
-        LivewireAlert::title($isDebt ? 'Sale Created' : 'Payment Complete')
-            ->text($isDebt ? 'Order recorded with an outstanding balance.' : 'Order paid successfully. Receipt is ready.')
-            ->success()
-            ->show();
     }
 
     public function menuItemImageUrl(MenuItem $item): ?string

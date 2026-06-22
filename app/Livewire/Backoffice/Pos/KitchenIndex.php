@@ -9,6 +9,8 @@ use Jantinnerezo\LivewireAlert\Facades\LivewireAlert;
 use Illuminate\Support\Str;
 use Livewire\Component;
 use Livewire\WithPagination;
+use Illuminate\Support\Facades\Log;
+use Throwable;
 
 class KitchenIndex extends Component
 {
@@ -76,6 +78,7 @@ class KitchenIndex extends Component
 
     public function markAs(int $saleItemId, string $status)
     {
+        try {
         $allowed = ['queued', 'cooking', 'ready', 'completed'];
 
         if (! in_array($status, $allowed, true)) {
@@ -111,16 +114,24 @@ class KitchenIndex extends Component
                 : $item->kitchen_completed_at,
         ]);
 
-        $this->updateSaleKitchenStatus($item->sale);
+            $this->updateSaleKitchenStatus($item->sale);
 
-        LivewireAlert::title('Kitchen Updated')
-            ->text('Kitchen status updated to ' . ucfirst($status) . '.')
-            ->success()
-            ->show();
+            LivewireAlert::title('Kitchen Updated')
+                ->text('Kitchen status updated to ' . ucfirst($status) . '.')
+                ->success()
+                ->show();
+        } catch (Throwable $e) {
+            Log::error('KitchenIndex::markAs failed', ['exception' => $e->getMessage(), 'trace' => $e->getTraceAsString(), 'saleItemId' => $saleItemId]);
+            LivewireAlert::title('Error')
+                ->text('Unable to update kitchen status. Please try again.')
+                ->error()
+                ->show();
+        }
     }
 
     protected function updateSaleKitchenStatus(Sale $sale): void
     {
+        try {
         $items = $sale->items()->where('is_kitchen_notified', true);
         $statuses = (clone $items)->pluck('kitchen_status')->unique()->toArray();
 
@@ -128,30 +139,37 @@ class KitchenIndex extends Component
             return;
         }
 
-        if (count($statuses) === 1 && $statuses[0] === 'completed') {
-            $sale->update([
-                'status' => (float) $sale->remaining_balance <= 0 ? 'completed' : 'served',
-                'served_at' => $sale->served_at ?? now(),
-                'completed_at' => (float) $sale->remaining_balance <= 0 ? now() : $sale->completed_at,
-            ]);
+            if (count($statuses) === 1 && $statuses[0] === 'completed') {
+                $sale->update([
+                    'status' => (float) $sale->remaining_balance <= 0 ? 'completed' : 'served',
+                    'served_at' => $sale->served_at ?? now(),
+                    'completed_at' => (float) $sale->remaining_balance <= 0 ? now() : $sale->completed_at,
+                ]);
 
-            return;
-        }
+                return;
+            }
 
-        if (in_array('cooking', $statuses, true)) {
-            $sale->update(['status' => 'cooking']);
+            if (in_array('cooking', $statuses, true)) {
+                $sale->update(['status' => 'cooking']);
 
-            return;
-        }
+                return;
+            }
 
-        if (in_array('ready', $statuses, true)) {
-            $sale->update(['status' => 'ready']);
+            if (in_array('ready', $statuses, true)) {
+                $sale->update(['status' => 'ready']);
 
-            return;
-        }
+                return;
+            }
 
-        if (in_array('queued', $statuses, true)) {
-            $sale->update(['status' => 'confirmed']);
+            if (in_array('queued', $statuses, true)) {
+                $sale->update(['status' => 'confirmed']);
+            }
+        } catch (Throwable $e) {
+            Log::error('KitchenIndex::updateSaleKitchenStatus failed', ['exception' => $e->getMessage(), 'trace' => $e->getTraceAsString(), 'saleId' => $sale->id]);
+            LivewireAlert::title('Error')
+                ->text('Unable to update order kitchen status. Please try again.')
+                ->error()
+                ->show();
         }
     }
 

@@ -9,6 +9,8 @@ use Jantinnerezo\LivewireAlert\Facades\LivewireAlert;
 use Livewire\Component;
 use Livewire\WithFileUploads;
 use Livewire\WithPagination;
+use Illuminate\Support\Facades\Log;
+use Throwable;
 
 class GalleryIndex extends Component
 {
@@ -96,32 +98,49 @@ class GalleryIndex extends Component
 
     public function save(): void
     {
-        $this->slug = $this->slug ?: Str::slug($this->title);
-        $this->validate();
+        try {
+            $this->slug = $this->slug ?: Str::slug($this->title);
+            $this->validate();
 
-        $image = $this->image ?: null;
+            $image = $this->image ?: null;
 
-        if ($this->image_upload) {
-            $image = $this->image_upload->store('gallery', 'public');
+            if ($this->image_upload) {
+                try {
+                    $image = $this->image_upload->store('gallery', 'public');
+                } catch (Throwable $e) {
+                    Log::error('GalleryIndex::save image store failed', ['exception' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
+                    LivewireAlert::title('Image Upload Failed')
+                        ->text('Unable to store uploaded image. Please try a different file or use an external URL.')
+                        ->error()
+                        ->show();
+                    return;
+                }
+            }
+
+            GalleryItem::updateOrCreate(['id' => $this->galleryId], [
+                'branch_id' => $this->branch_id ?: null,
+                'title' => $this->title,
+                'slug' => $this->slug,
+                'category' => $this->category,
+                'type' => $this->type,
+                'image' => $image,
+                'video_url' => $this->video_url ?: null,
+                'description' => $this->description ?: null,
+                'is_featured' => $this->is_featured,
+                'is_published' => $this->is_published,
+                'sort_order' => $this->sort_order,
+            ]);
+
+            $this->dispatch('close-modal', 'gallery-form');
+            LivewireAlert::title('Gallery Saved')->success()->show();
+            $this->resetForm();
+        } catch (Throwable $e) {
+            Log::error('GalleryIndex::save failed', ['exception' => $e->getMessage(), 'trace' => $e->getTraceAsString(), 'galleryId' => $this->galleryId ?? null]);
+            LivewireAlert::title('Error')
+                ->text('Unable to save media. Please try again or contact support.')
+                ->error()
+                ->show();
         }
-
-        GalleryItem::updateOrCreate(['id' => $this->galleryId], [
-            'branch_id' => $this->branch_id ?: null,
-            'title' => $this->title,
-            'slug' => $this->slug,
-            'category' => $this->category,
-            'type' => $this->type,
-            'image' => $image,
-            'video_url' => $this->video_url ?: null,
-            'description' => $this->description ?: null,
-            'is_featured' => $this->is_featured,
-            'is_published' => $this->is_published,
-            'sort_order' => $this->sort_order,
-        ]);
-
-        $this->dispatch('close-modal', 'gallery-form');
-        LivewireAlert::title('Gallery Saved')->success()->show();
-        $this->resetForm();
     }
 
     public function delete(int $id): void

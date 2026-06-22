@@ -3,6 +3,7 @@
     $links = [
         ['label' => 'Home', 'route' => 'website.home'],
         ['label' => 'Branches', 'route' => 'website.branches'],
+        ['label' => 'Menu', 'route' => 'website.menu'],
         ['label' => 'Gallery', 'route' => 'website.gallery'],
         ['label' => 'Reviews', 'route' => 'website.reviews'],
         ['label' => 'Events', 'route' => 'website.events'],

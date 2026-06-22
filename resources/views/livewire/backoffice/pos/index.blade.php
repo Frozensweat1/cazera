@@ -76,7 +76,7 @@
                                         </div>
                                     </div>
 
-                                    <div class="max-h-[32rem] overflow-y-auto pr-2 xl:max-h-[calc(100vh-18rem)]">
+                                    <div style="max-height: calc(100vh - 18rem); overflow-y: auto; padding-right: .5rem;">
                                         <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
                                             @forelse ($menuItemsByModule[$module->id] ?? collect() as $item)
                                                 @php

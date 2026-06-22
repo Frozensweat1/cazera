@@ -14,6 +14,8 @@ use Livewire\Component;
 use Livewire\WithPagination;
 use Jantinnerezo\LivewireAlert\Facades\LivewireAlert;
 use Livewire\WithFileUploads;
+use Illuminate\Support\Facades\Log;
+use Throwable;
 
 class Index extends Component
 {
@@ -280,76 +282,93 @@ class Index extends Component
 
     public function save()
     {
-        $this->validate();
-        $this->authorizeBranch($this->branch_id);
-        $this->authorizeModule($this->module_id, $this->branch_id);
+        try {
+            $this->validate();
+            $this->authorizeBranch($this->branch_id);
+            $this->authorizeModule($this->module_id, $this->branch_id);
 
-        $category = Category::accessible()->findOrFail($this->category_id);
-        abort_unless((int) $category->branch_id === (int) $this->branch_id && (int) $category->module_id === (int) $this->module_id, 403);
+            $category = Category::accessible()->findOrFail($this->category_id);
+            abort_unless((int) $category->branch_id === (int) $this->branch_id && (int) $category->module_id === (int) $this->module_id, 403);
 
-        $existingItem = $this->menuItemId
-            ? MenuItem::accessible()->findOrFail($this->menuItemId)
-            : null;
+            $existingItem = $this->menuItemId
+                ? MenuItem::accessible()->findOrFail($this->menuItemId)
+                : null;
 
-        $imageUrl = $this->image_url;
+            $imageUrl = $this->image_url;
 
-        if ($this->image) {
-            if ($existingItem) {
-                $this->deleteStoredImage($existingItem->image_url);
+            if ($this->image) {
+                try {
+                    if ($existingItem) {
+                        $this->deleteStoredImage($existingItem->image_url);
+                    }
+
+                    $imageUrl = $this->image->store('menu-items', 'public');
+                } catch (Throwable $e) {
+                    Log::error('MenuItems::save image store failed', ['exception' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
+                    LivewireAlert::title('Image Upload Failed')
+                        ->text('Unable to store uploaded image. Please try a different file or use an external URL.')
+                        ->error()
+                        ->show();
+                    return;
+                }
             }
 
-            $imageUrl = $this->image->store('menu-items', 'public');
+            $isTrackable = (bool) $this->is_trackable;
+            $quantity = $isTrackable ? (int) ($this->quantity ?? 0) : 0;
+            $status = $isTrackable && $quantity <= 0 ? 'out_of_stock' : $this->status;
+
+            DB::transaction(function () use ($existingItem, $imageUrl, $isTrackable, $quantity, $status) {
+                $item = MenuItem::updateOrCreate(
+                    ['id' => $this->menuItemId],
+                    [
+                        'branch_id' => $this->branch_id,
+
+                        'module_id' => $this->module_id,
+
+                        'category_id' => $this->category_id,
+
+                        'name' => $this->name,
+
+                        'slug' => $this->slug,
+
+                        'description' => $this->description,
+
+                        'image_url' => $imageUrl,
+
+                        'quantity' => $quantity,
+
+                        'price' => $this->price,
+
+                        'cost_price' => $this->cost_price,
+
+                        'preparation_time' => $this->preparation_time,
+
+                        'status' => $status,
+
+                        'is_trackable' => $isTrackable,
+
+                        'sort_order' => $this->sort_order,
+                    ]
+                );
+
+                $this->recordQuantityAdjustment($item, $existingItem, $isTrackable, $quantity);
+            });
+
+            $this->dispatch('close-modal', 'menu-item-form');
+
+            LivewireAlert::title('Menu Item Saved')
+                ->text('Menu item saved successfully.')
+                ->success()
+                ->show();
+
+            $this->resetForm();
+        } catch (Throwable $e) {
+            Log::error('MenuItems::save failed', ['exception' => $e->getMessage(), 'trace' => $e->getTraceAsString(), 'menuItemId' => $this->menuItemId ?? null]);
+            LivewireAlert::title('Error')
+                ->text('Unable to save menu item. Please try again or contact support.')
+                ->error()
+                ->show();
         }
-
-        $isTrackable = (bool) $this->is_trackable;
-        $quantity = $isTrackable ? (int) ($this->quantity ?? 0) : 0;
-        $status = $isTrackable && $quantity <= 0 ? 'out_of_stock' : $this->status;
-
-        DB::transaction(function () use ($existingItem, $imageUrl, $isTrackable, $quantity, $status) {
-            $item = MenuItem::updateOrCreate(
-                ['id' => $this->menuItemId],
-                [
-                    'branch_id' => $this->branch_id,
-
-                    'module_id' => $this->module_id,
-
-                    'category_id' => $this->category_id,
-
-                    'name' => $this->name,
-
-                    'slug' => $this->slug,
-
-                    'description' => $this->description,
-
-                    'image_url' => $imageUrl,
-
-                    'quantity' => $quantity,
-
-                    'price' => $this->price,
-
-                    'cost_price' => $this->cost_price,
-
-                    'preparation_time' => $this->preparation_time,
-
-                    'status' => $status,
-
-                    'is_trackable' => $isTrackable,
-
-                    'sort_order' => $this->sort_order,
-                ]
-            );
-
-            $this->recordQuantityAdjustment($item, $existingItem, $isTrackable, $quantity);
-        });
-
-        $this->dispatch('close-modal', 'menu-item-form');
-
-        LivewireAlert::title('Menu Item Saved')
-            ->text('Menu item saved successfully.')
-            ->success()
-            ->show();
-
-        $this->resetForm();
     }
 
     public function delete($id)

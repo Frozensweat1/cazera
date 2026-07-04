@@ -9,6 +9,8 @@ use App\Models\Expense;
 use App\Models\InventoryItem;
 use App\Models\MaintenanceRequest;
 use App\Models\Sale;
+use App\Models\SaleItem;
+use App\Support\SaleModuleAllocation;
 use Carbon\CarbonPeriod;
 use Illuminate\Support\Facades\DB;
 use Livewire\Component;
@@ -89,9 +91,13 @@ class Analytical extends Component
         $this->maintenanceStatus = $statusCounts;
         $this->lowStockItems = (int) $this->applyDashboardScope(InventoryItem::query())
             ->where('is_trackable', true)
+            ->where('is_active', true)
             ->whereColumn('quantity_on_hand', '<=', 'reorder_level')
             ->count();
-        $totalStockItems = (int) $this->applyDashboardScope(InventoryItem::query())->where('is_trackable', true)->count();
+        $totalStockItems = (int) $this->applyDashboardScope(InventoryItem::query())
+            ->where('is_trackable', true)
+            ->where('is_active', true)
+            ->count();
         $this->stockRiskRate = $totalStockItems > 0 ? round(($this->lowStockItems / $totalStockItems) * 100, 2) : 0.0;
 
         $this->pendingMaintenance = (int) (clone $maintenanceQuery)->whereIn('status', ['requested', 'approved', 'in_progress'])->count();
@@ -102,16 +108,20 @@ class Analytical extends Component
 
         $salesQuery = $this->applyDateRange($this->applyDashboardScope(Sale::query()), 'sale_date')
             ->whereNotIn('status', ['cancelled', 'refunded']);
-        $totalSales = (float) (clone $salesQuery)->sum('total');
-        $paidSales = (float) (clone $salesQuery)->sum('paid_amount');
-        $debtSales = (float) (clone $salesQuery)->sum('remaining_balance');
+        $moduleId = $this->dashboardModuleId();
+        $totalSales = SaleModuleAllocation::sum($salesQuery, 'total', $moduleId);
+        $paidSales = SaleModuleAllocation::sum($salesQuery, 'paid_amount', $moduleId);
+        $debtSales = SaleModuleAllocation::sum($salesQuery, 'remaining_balance', $moduleId);
         $this->collectionRate = $totalSales > 0 ? round(($paidSales / $totalSales) * 100, 2) : 0.0;
         $this->debtRatio = $totalSales > 0 ? round(($debtSales / $totalSales) * 100, 2) : 0.0;
 
-        $moduleData = (clone $salesQuery)
-            ->leftJoin('modules', 'sales.module_id', '=', 'modules.id')
-            ->selectRaw("COALESCE(modules.name, 'No module') as module_name, SUM(sales.total) as total")
-            ->groupBy('module_name')
+        $moduleData = $this->applyDashboardScope(SaleItem::query(), 'sale_items.branch_id', 'sale_items.module_id')
+            ->join('sales', 'sale_items.sale_id', '=', 'sales.id')
+            ->join('modules', 'sale_items.module_id', '=', 'modules.id')
+            ->whereBetween('sales.sale_date', [$from, $to])
+            ->whereNotIn('sales.status', ['cancelled', 'refunded'])
+            ->selectRaw("modules.name as module_name, SUM(sale_items.total) as total")
+            ->groupBy('modules.id', 'modules.name')
             ->orderByDesc('total')
             ->limit(6)
             ->get();

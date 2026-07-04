@@ -32,7 +32,7 @@ class SplitPaymentsIndex extends Component
                 ->accessible()
                 ->has('payments', '>', 1)
                 ->when($branchId, fn($query) => $query->where('branch_id', $branchId))
-                ->when($this->filterModule, fn($query) => $query->where('module_id', $this->filterModule))
+                ->forModule($this->filterModule)
                 ->when($this->search, fn($query) => $query->where(function ($query) {
                     $query->where('sale_number', 'like', "%{$this->search}%")
                         ->orWhereHas('customer', fn($q) => $q->where('name', 'like', "%{$this->search}%"));

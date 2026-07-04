@@ -7,6 +7,7 @@ use App\Livewire\Concerns\HasBranchScope;
 use App\Models\InventoryItem;
 use App\Models\Sale;
 use App\Models\SaleItem;
+use App\Support\SaleModuleAllocation;
 use Carbon\CarbonPeriod;
 use Illuminate\Support\Facades\DB;
 use Livewire\Component;
@@ -49,8 +50,11 @@ class Quantitative extends Component
         $salesQuery = $this->applyDateRange($this->applyDashboardScope(Sale::query()), 'sale_date')
             ->whereNotIn('status', ['cancelled', 'refunded']);
 
-        $salesByDate = (clone $salesQuery)
-            ->selectRaw('DATE(sale_date) as date, SUM(total) as total, COUNT(*) as orders')
+        $moduleId = $this->dashboardModuleId();
+
+        $salesByDate = SaleModuleAllocation::byDate($salesQuery, 'total', $moduleId);
+        $ordersByDate = (clone $salesQuery)
+            ->selectRaw('DATE(sale_date) as date, COUNT(*) as orders')
             ->groupBy('date')
             ->orderBy('date')
             ->get()
@@ -60,10 +64,10 @@ class Quantitative extends Component
 
         $this->weeklyLabels = $dates->map(fn ($date) => $date->format('M d'))->toArray();
         $this->weeklySales = $dates->map(fn ($date) => round((float) ($salesByDate->get($date->toDateString())->total ?? 0), 2))->toArray();
-        $this->weeklyOrders = $dates->map(fn ($date) => (int) ($salesByDate->get($date->toDateString())->orders ?? 0))->toArray();
+        $this->weeklyOrders = $dates->map(fn ($date) => (int) ($ordersByDate->get($date->toDateString())->orders ?? 0))->toArray();
 
         $this->totalOrders = (int) (clone $salesQuery)->count();
-        $this->averageOrderValue = round((float) (clone $salesQuery)->avg('total'), 2);
+        $this->averageOrderValue = $this->totalOrders > 0 ? round(SaleModuleAllocation::sum($salesQuery, 'total', $moduleId) / $this->totalOrders, 2) : 0.0;
 
         $saleItemQuery = $this->applyDashboardScope(SaleItem::query(), 'sale_items.branch_id', 'sale_items.module_id')
             ->join('sales', 'sale_items.sale_id', '=', 'sales.id')
@@ -76,6 +80,7 @@ class Quantitative extends Component
 
         $this->lowStockCount = (int) $this->applyDashboardScope(InventoryItem::query())
             ->where('is_trackable', true)
+            ->where('is_active', true)
             ->whereColumn('quantity_on_hand', '<=', 'reorder_level')
             ->count();
 

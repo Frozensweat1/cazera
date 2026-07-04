@@ -5,6 +5,7 @@ namespace App\Livewire\Backoffice\Website;
 use App\Livewire\Concerns\HasBranchScope;
 use App\Models\GalleryItem;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Jantinnerezo\LivewireAlert\Facades\LivewireAlert;
 use Livewire\Component;
 use Livewire\WithFileUploads;
@@ -37,6 +38,19 @@ class GalleryIndex extends Component
 
     public array $categories = ['ambiance', 'food', 'events', 'nightlife', 'vip', 'interiors'];
 
+    protected array $socialVideoDomains = [
+        'youtube.com',
+        'youtu.be',
+        'vimeo.com',
+        'instagram.com',
+        'facebook.com',
+        'fb.watch',
+        'tiktok.com',
+        'x.com',
+        'twitter.com',
+        'linkedin.com',
+    ];
+
     protected function rules(): array
     {
         return [
@@ -45,9 +59,29 @@ class GalleryIndex extends Component
             'slug' => 'nullable|string|max:255|unique:gallery_items,slug,' . $this->galleryId,
             'category' => 'required|string|max:80',
             'type' => 'required|in:image,video',
-            'image' => 'nullable|string|max:2048',
-            'image_upload' => 'nullable|image|max:5120',
-            'video_url' => 'nullable|string|max:2048',
+            'image' => [
+                Rule::requiredIf($this->type === 'image' && ! $this->image_upload),
+                'nullable',
+                'string',
+                'max:2048',
+            ],
+            'image_upload' => [
+                Rule::requiredIf($this->type === 'image' && blank($this->image)),
+                'nullable',
+                'image',
+                'max:5120',
+            ],
+            'video_url' => [
+                Rule::requiredIf($this->type === 'video'),
+                'nullable',
+                'url',
+                'max:2048',
+                function (string $attribute, mixed $value, \Closure $fail) {
+                    if ($this->type === 'video' && ! $this->isAllowedSocialVideoUrl((string) $value)) {
+                        $fail('Video URL must be from YouTube, Vimeo, Instagram, Facebook, TikTok, X/Twitter, or LinkedIn.');
+                    }
+                },
+            ],
             'description' => 'nullable|string|max:1000',
             'is_featured' => 'boolean',
             'is_published' => 'boolean',
@@ -124,7 +158,7 @@ class GalleryIndex extends Component
                 'category' => $this->category,
                 'type' => $this->type,
                 'image' => $image,
-                'video_url' => $this->video_url ?: null,
+                'video_url' => $this->type === 'video' ? $this->normalizedVideoUrl() : null,
                 'description' => $this->description ?: null,
                 'is_featured' => $this->is_featured,
                 'is_published' => $this->is_published,
@@ -157,5 +191,34 @@ class GalleryIndex extends Component
         $this->is_featured = false;
         $this->is_published = true;
         $this->sort_order = 0;
+    }
+
+    protected function isAllowedSocialVideoUrl(string $url): bool
+    {
+        $url = trim($url);
+
+        if ($url === '') {
+            return false;
+        }
+
+        $parts = parse_url($url);
+        $scheme = strtolower((string) ($parts['scheme'] ?? ''));
+        $host = strtolower((string) ($parts['host'] ?? ''));
+
+        if (! in_array($scheme, ['http', 'https'], true) || $host === '') {
+            return false;
+        }
+
+        $host = preg_replace('/^(www\.|m\.)/', '', $host);
+
+        return collect($this->socialVideoDomains)
+            ->contains(fn (string $domain) => $host === $domain || Str::endsWith($host, '.' . $domain));
+    }
+
+    protected function normalizedVideoUrl(): ?string
+    {
+        $url = trim($this->video_url);
+
+        return $url !== '' ? $url : null;
     }
 }

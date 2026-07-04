@@ -18,10 +18,6 @@ return new class extends Migration
                 ->constrained('branches')
                 ->cascadeOnDelete();
 
-            $table->foreignId('module_id')
-                ->constrained('modules')
-                ->cascadeOnDelete();
-
             $table->foreignId('customer_id')
                 ->nullable()
                 ->constrained('customers')
@@ -81,7 +77,6 @@ return new class extends Migration
             $table->index('status');
             $table->index('type');
             $table->index('customer_id');
-            $table->index('module_id');
             $table->index('created_by');
             $table->index('sale_date');
         });

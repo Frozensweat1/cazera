@@ -9,6 +9,7 @@ use App\Models\Customer;
 use App\Models\MenuItemAdjustment;
 use App\Models\Payment;
 use App\Models\Sale;
+use App\Support\SaleTableRelease;
 use App\Support\WebsiteContent;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
@@ -42,11 +43,11 @@ class SalesIndex extends Component
         $branchId = $this->filterBranch ?: (auth()->user()?->isSuperAdmin() ? null : session('branch_id'));
 
         return view('livewire.backoffice.pos.sales-index', [
-            'sales' => Sale::with(['branch', 'customer', 'module', 'creator', 'payments'])
+            'sales' => Sale::with(['branch', 'customer', 'module', 'creator', 'payments', 'table'])
                 ->accessible()
                 ->where('status', '!=', 'refunded')
                 ->when($branchId, fn($query) => $query->where('branch_id', $branchId))
-                ->when($this->filterModule, fn($query) => $query->where('module_id', $this->filterModule))
+                ->forModule($this->filterModule)
                 ->when($this->filterStatus, fn($query) => $query->where('status', $this->filterStatus))
                 ->when($this->search, fn($query) => $query->where(function ($query) {
                     $query->where('sale_number', 'like', "%{$this->search}%")
@@ -138,6 +139,10 @@ class SalesIndex extends Component
                     'status' => $remaining <= 0 ? 'completed' : $sale->status,
                     'completed_at' => $remaining <= 0 ? now() : $sale->completed_at,
                 ]);
+
+                if ($remaining <= 0) {
+                    SaleTableRelease::releaseIfSettled($sale->fresh());
+                }
             });
 
             $this->dispatch('close-modal', 'sales-payment-modal');
@@ -187,11 +192,12 @@ class SalesIndex extends Component
                 abort_if($amount > (float) $sale->paid_amount, 422, 'Refund cannot exceed paid amount.');
 
                 $register = $this->openRegisterFor($sale);
+                $moduleId = $sale->items->pluck('module_id')->filter()->first();
 
                 CashRegisterTransaction::create([
                     'cash_register_id' => $register->id,
                     'branch_id' => $sale->branch_id,
-                    'module_id' => $sale->module_id,
+                    'module_id' => $moduleId,
                     'sale_id' => $sale->id,
                     'performed_by' => auth()->id(),
                     'type' => 'refund',
@@ -205,7 +211,7 @@ class SalesIndex extends Component
                 Payment::create([
                     'sale_id' => $sale->id,
                     'branch_id' => $sale->branch_id,
-                    'module_id' => $sale->module_id,
+                    'module_id' => $moduleId,
                     'cash_register_id' => $register->id,
                     'received_by' => auth()->id(),
                     'method' => $this->refund_method,
@@ -237,7 +243,7 @@ class SalesIndex extends Component
 
                     MenuItemAdjustment::create([
                         'branch_id' => $sale->branch_id,
-                        'module_id' => $sale->module_id,
+                        'module_id' => $item->module_id,
                         'menu_item_id' => $item->menu_item_id,
                         'sale_id' => $sale->id,
                         'performed_by' => auth()->id(),
@@ -250,6 +256,8 @@ class SalesIndex extends Component
                         'transaction_date' => now(),
                     ]);
                 }
+
+                SaleTableRelease::release($sale);
 
                 $paid = round((float) $sale->paid_amount - $amount, 2);
                 $remaining = round((float) $sale->total - $paid, 2);
@@ -283,17 +291,46 @@ class SalesIndex extends Component
         }
     }
 
+    public function releaseTable(int $saleId): void
+    {
+        try {
+            DB::transaction(function () use ($saleId) {
+                $sale = Sale::accessible()
+                    ->with('table')
+                    ->whereNotNull('table_id')
+                    ->lockForUpdate()
+                    ->findOrFail($saleId);
+
+                abort_unless(SaleTableRelease::canRelease($sale), 422, 'Only completed or fully paid table orders can be released.');
+
+                SaleTableRelease::release($sale);
+            });
+
+            LivewireAlert::title('Table Released')
+                ->text('The dining table is now available.')
+                ->success()
+                ->show();
+        } catch (Throwable $e) {
+            Log::error('SalesIndex::releaseTable failed', ['exception' => $e->getMessage(), 'trace' => $e->getTraceAsString(), 'sale_id' => $saleId]);
+            LivewireAlert::title('Unable to Release Table')
+                ->text('Please refresh and try again.')
+                ->error()
+                ->show();
+        }
+    }
+
     protected function openRegisterFor(Sale $sale): CashRegister
     {
+        $moduleId = $sale->items->pluck('module_id')->filter()->first();
         $register = CashRegister::where('branch_id', $sale->branch_id)
-            ->where('module_id', $sale->module_id)
+            ->where('module_id', $moduleId)
             ->where('is_open', true)
             ->latest('opened_at')
             ->first();
 
         return $register ?: CashRegister::create([
             'branch_id' => $sale->branch_id,
-            'module_id' => $sale->module_id,
+            'module_id' => $moduleId,
             'opened_by' => auth()->id(),
             'name' => 'Auto-opened POS register',
         ]);
@@ -304,7 +341,7 @@ class SalesIndex extends Component
         CashRegisterTransaction::create([
             'cash_register_id' => $register->id,
             'branch_id' => $sale->branch_id,
-            'module_id' => $sale->module_id,
+            'module_id' => $register->module_id,
             'sale_id' => $sale->id,
             'performed_by' => auth()->id(),
             'type' => 'sale',
@@ -318,7 +355,7 @@ class SalesIndex extends Component
         Payment::create([
             'sale_id' => $sale->id,
             'branch_id' => $sale->branch_id,
-            'module_id' => $sale->module_id,
+            'module_id' => $register->module_id,
             'cash_register_id' => $register->id,
             'received_by' => auth()->id(),
             'method' => $method,

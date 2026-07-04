@@ -23,6 +23,11 @@
                     <div class="max-w-5xl">
                         <img :src="active.image" :alt="active.title" class="max-h-[78vh] rounded-2xl object-contain">
                         <p class="mt-4 text-center font-serif text-2xl text-ivory" x-text="active.title"></p>
+                        <template x-if="active.type === 'video' && active.video_url">
+                            <div class="mt-4 text-center">
+                                <a :href="active.video_url" target="_blank" rel="noopener" class="inline-flex rounded-full bg-gold px-5 py-3 text-sm font-bold text-ink">Open video</a>
+                            </div>
+                        </template>
                     </div>
                 </div>
             </template>

@@ -297,7 +297,6 @@ class BackofficeDemoDataSeeder extends Seeder
                 'branch_id' => $branch->id,
                 'sale_number' => $saleData['sale_number'],
             ], [
-                'module_id' => $restaurantModule->id,
                 'customer_id' => $customers[$saleData['customer_email']]->id,
                 'created_by' => $adminUser->id,
                 'type' => $saleData['type'],

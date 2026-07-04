@@ -35,11 +35,11 @@
 
         <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
             <div class="panel"><p class="text-sm text-gray-500">Transactions</p><p class="mt-2 text-2xl font-extrabold">{{ number_format($totalTransactions) }}</p></div>
-            <div class="panel"><p class="text-sm text-gray-500">Sale Collections</p><p class="mt-2 text-2xl font-extrabold text-emerald-700">{{ number_format($saleCollections, 2) }}</p></div>
-            <div class="panel"><p class="text-sm text-gray-500">Refunds</p><p class="mt-2 text-2xl font-extrabold text-red-700">{{ number_format($refunds, 2) }}</p></div>
-            <div class="panel"><p class="text-sm text-gray-500">Expected</p><p class="mt-2 text-2xl font-extrabold">{{ number_format($expectedTotal, 2) }}</p></div>
-            <div class="panel"><p class="text-sm text-gray-500">Actual Closed</p><p class="mt-2 text-2xl font-extrabold">{{ number_format($actualTotal, 2) }}</p></div>
-            <div class="panel"><p class="text-sm text-gray-500">Variance</p><p @class(['mt-2 text-2xl font-extrabold', 'text-emerald-700' => $differenceTotal >= 0, 'text-red-700' => $differenceTotal < 0])>{{ number_format($differenceTotal, 2) }}</p></div>
+            <div class="panel"><p class="text-sm text-gray-500">Sale Collections</p><p class="mt-2 text-2xl font-extrabold text-emerald-700"><x-ui.money :amount="$saleCollections" /></p></div>
+            <div class="panel"><p class="text-sm text-gray-500">Refunds</p><p class="mt-2 text-2xl font-extrabold text-red-700"><x-ui.money :amount="$refunds" /></p></div>
+            <div class="panel"><p class="text-sm text-gray-500">Expected</p><p class="mt-2 text-2xl font-extrabold"><x-ui.money :amount="$expectedTotal" /></p></div>
+            <div class="panel"><p class="text-sm text-gray-500">Actual Closed</p><p class="mt-2 text-2xl font-extrabold"><x-ui.money :amount="$actualTotal" /></p></div>
+            <div class="panel"><p class="text-sm text-gray-500">Variance</p><p @class(['mt-2 text-2xl font-extrabold', 'text-emerald-700' => $differenceTotal >= 0, 'text-red-700' => $differenceTotal < 0])><x-ui.money :amount="$differenceTotal" /></p></div>
         </div>
 
         <div class="grid gap-6 xl:grid-cols-2">
@@ -51,9 +51,9 @@
                             <div class="flex justify-between gap-4"><strong>{{ $register->name ?: 'POS Register' }}</strong><span>{{ $register->is_open ? 'Open' : 'Closed' }}</span></div>
                             <p class="text-xs text-gray-500">{{ $register->branch?->name }} / {{ $register->module?->name ?? 'No module' }}</p>
                             <div class="mt-2 grid grid-cols-3 gap-2 text-sm">
-                                <div><span class="text-gray-500">Expected</span><p class="font-bold">{{ number_format($register->expected_balance, 2) }}</p></div>
-                                <div><span class="text-gray-500">Actual</span><p class="font-bold">{{ $register->is_open ? 'Pending' : number_format($register->actual_balance, 2) }}</p></div>
-                                <div><span class="text-gray-500">Diff</span><p @class(['font-bold', 'text-emerald-700' => (float) $register->difference >= 0, 'text-red-700' => (float) $register->difference < 0])>{{ $register->is_open ? 'Pending' : number_format($register->difference, 2) }}</p></div>
+                                <div><span class="text-gray-500">Expected</span><p class="font-bold"><x-ui.money :amount="$register->expected_balance" /></p></div>
+                                <div><span class="text-gray-500">Actual</span><p class="font-bold">@if ($register->is_open) Pending @else <x-ui.money :amount="$register->actual_balance" /> @endif</p></div>
+                                <div><span class="text-gray-500">Diff</span><p @class(['font-bold', 'text-emerald-700' => (float) $register->difference >= 0, 'text-red-700' => (float) $register->difference < 0])>@if ($register->is_open) Pending @else <x-ui.money :amount="$register->difference" /> @endif</p></div>
                             </div>
                         </div>
                     @empty
@@ -65,10 +65,10 @@
             <div class="panel">
                 <h3 class="text-lg font-bold text-gray-900">Transaction Type Breakdown</h3>
                 <div class="mt-4 space-y-3">
-                    <div class="flex justify-between rounded-lg bg-slate-50 p-3"><span>Cash In</span><strong>{{ number_format($cashIn, 2) }}</strong></div>
-                    <div class="flex justify-between rounded-lg bg-slate-50 p-3"><span>Cash Out</span><strong>{{ number_format($cashOut, 2) }}</strong></div>
+                    <div class="flex justify-between rounded-lg bg-slate-50 p-3"><span>Cash In</span><strong><x-ui.money :amount="$cashIn" /></strong></div>
+                    <div class="flex justify-between rounded-lg bg-slate-50 p-3"><span>Cash Out</span><strong><x-ui.money :amount="$cashOut" /></strong></div>
                     @forelse ($transactionTypes as $type)
-                        <div class="rounded-lg border border-slate-200 p-3"><div class="flex justify-between"><span class="font-semibold">{{ ucwords(str_replace('_', ' ', $type->type)) }}</span><strong>{{ number_format($type->total_amount, 2) }}</strong></div><p class="text-xs text-gray-500">Transactions {{ number_format($type->count) }}</p></div>
+                        <div class="rounded-lg border border-slate-200 p-3"><div class="flex justify-between"><span class="font-semibold">{{ ucwords(str_replace('_', ' ', $type->type)) }}</span><strong><x-ui.money :amount="$type->total_amount" /></strong></div><p class="text-xs text-gray-500">Transactions {{ number_format($type->count) }}</p></div>
                     @empty
                         <p class="text-sm text-gray-500">No transaction breakdown available.</p>
                     @endforelse
@@ -80,7 +80,7 @@
             <h3 class="text-lg font-bold text-gray-900">Recent Register Transactions</h3>
             <div class="mt-4 space-y-3">
                 @forelse ($recentTransactions as $transaction)
-                    <div class="rounded-lg border border-slate-200 p-3"><div class="flex justify-between gap-4"><div><p class="font-semibold">{{ $transaction->cashRegister?->name ?? 'Register' }}</p><p class="text-xs text-gray-500">{{ $transaction->branch?->name ?? 'Branch' }} / {{ ucwords(str_replace('_', ' ', $transaction->type)) }} / {{ $transaction->transaction_date?->format('M d, Y H:i') }}</p></div><strong @class(['text-red-700' => (float) $transaction->amount < 0])>{{ number_format($transaction->amount, 2) }}</strong></div></div>
+                    <div class="rounded-lg border border-slate-200 p-3"><div class="flex justify-between gap-4"><div><p class="font-semibold">{{ $transaction->cashRegister?->name ?? 'Register' }}</p><p class="text-xs text-gray-500">{{ $transaction->branch?->name ?? 'Branch' }} / {{ ucwords(str_replace('_', ' ', $transaction->type)) }} / {{ $transaction->transaction_date?->format('M d, Y H:i') }}</p></div><strong @class(['text-red-700' => (float) $transaction->amount < 0])><x-ui.money :amount="$transaction->amount" /></strong></div></div>
                 @empty
                     <p class="text-sm text-gray-500">No recent register transactions.</p>
                 @endforelse

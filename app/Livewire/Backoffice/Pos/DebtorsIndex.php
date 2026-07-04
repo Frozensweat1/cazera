@@ -7,6 +7,7 @@ use App\Models\CashRegister;
 use App\Models\CashRegisterTransaction;
 use App\Models\Payment;
 use App\Models\Sale;
+use App\Support\SaleTableRelease;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Jantinnerezo\LivewireAlert\Facades\LivewireAlert;
@@ -41,7 +42,7 @@ class DebtorsIndex extends Component
                 ->where('is_debt', true)
                 ->where('status', '!=', 'refunded')
                 ->when($branchId, fn($query) => $query->where('branch_id', $branchId))
-                ->when($this->filterModule, fn($query) => $query->where('module_id', $this->filterModule))
+                ->forModule($this->filterModule)
                 ->when($this->search, fn($query) => $query->where(function ($query) {
                     $query->where('sale_number', 'like', "%{$this->search}%")
                         ->orWhereHas('customer', fn($q) => $q->where('name', 'like', "%{$this->search}%"));
@@ -104,6 +105,10 @@ class DebtorsIndex extends Component
                     'status' => $remaining <= 0 ? 'completed' : $sale->status,
                     'completed_at' => $remaining <= 0 ? now() : $sale->completed_at,
                 ]);
+
+                if ($remaining <= 0) {
+                    SaleTableRelease::releaseIfSettled($sale->fresh());
+                }
             });
 
             $this->reset(['paymentSaleId', 'payment_reference']);
@@ -126,15 +131,16 @@ class DebtorsIndex extends Component
 
     protected function openRegisterFor(Sale $sale): CashRegister
     {
+        $moduleId = $sale->items->pluck('module_id')->filter()->first();
         $register = CashRegister::where('branch_id', $sale->branch_id)
-            ->where('module_id', $sale->module_id)
+            ->where('module_id', $moduleId)
             ->where('is_open', true)
             ->latest('opened_at')
             ->first();
 
         return $register ?: CashRegister::create([
             'branch_id' => $sale->branch_id,
-            'module_id' => $sale->module_id,
+            'module_id' => $moduleId,
             'opened_by' => auth()->id(),
             'name' => 'Auto-opened debtor payment register',
         ]);
@@ -145,7 +151,7 @@ class DebtorsIndex extends Component
         CashRegisterTransaction::create([
             'cash_register_id' => $register->id,
             'branch_id' => $sale->branch_id,
-            'module_id' => $sale->module_id,
+            'module_id' => $register->module_id,
             'sale_id' => $sale->id,
             'performed_by' => auth()->id(),
             'type' => 'sale',
@@ -159,7 +165,7 @@ class DebtorsIndex extends Component
         Payment::create([
             'sale_id' => $sale->id,
             'branch_id' => $sale->branch_id,
-            'module_id' => $sale->module_id,
+            'module_id' => $register->module_id,
             'cash_register_id' => $register->id,
             'received_by' => auth()->id(),
             'method' => $method,

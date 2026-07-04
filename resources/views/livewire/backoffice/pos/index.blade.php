@@ -27,6 +27,14 @@
                                     :class="activeTab === 'module-{{ $module->id }}' ? 'text-secondary' : ''"
                                     @click.prevent="setTab('module-{{ $module->id }}')">
                                     {{ $module->name }}
+                                    @php
+                                        $moduleCartCount = collect($cart)->where('module_id', $module->id)->sum('qty');
+                                    @endphp
+                                    @if ($moduleCartCount > 0)
+                                        <span class="ml-2 inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-700">
+                                            {{ $moduleCartCount }}
+                                        </span>
+                                    @endif
                                 </a>
                             </li>
                         @endforeach
@@ -139,30 +147,51 @@
 
                                 <div class="space-y-4">
                                     <div class="panel">
-                                        <h3 class="text-lg font-semibold">Order summary</h3>
+                                        <div class="flex items-center justify-between gap-3">
+                                        <div>
+                                            <h3 class="text-lg font-semibold">Order summary</h3>
+                                            @if ($editingSaleId)
+                                                <p class="text-sm text-amber-700">Editing sale: {{ $editingSaleNumber }}</p>
+                                            @endif
+                                        </div>
+                                        @if ($editingSaleId)
+                                            <x-ui.button type="button" variant="outline-secondary" size="sm" wire:click="cancelEdit">Cancel Edit</x-ui.button>
+                                        @endif
+                                    </div>
 
                                         <div class="space-y-3 mt-4">
                                             @php
-                                                $moduleCart = collect($this->cart[$module->id] ?? []);
-                                                $subtotal = $moduleCart->sum('subtotal');
-                                                $moduleTaxes = $taxesByModule[$module->id] ?? collect();
-                                                $moduleDiscounts = $discountsByModule[$module->id] ?? collect();
-                                                $taxRate = $moduleTaxes->sum('rate_percent') / 100;
-                                                $serviceChargeRate =
-                                                    data_get($module->pos_settings, 'service_charge', 0) / 100;
-                                                $serviceCharge = round($subtotal * $serviceChargeRate, 2);
-                                                $billBeforeDiscount = round($subtotal + $serviceCharge, 2);
-                                                $tax = round($billBeforeDiscount * $taxRate, 2);
-                                                $selectedDiscount = $moduleDiscounts->firstWhere('id', (int) $discount_id);
-                                                $discountAmount = $selectedDiscount
-                                                    ? $selectedDiscount->calculateFor($billBeforeDiscount)
-                                                    : 0;
-                                                $total = round(max(0, $billBeforeDiscount - $discountAmount), 2);
-                                                $paidPreview = collect($splitPayments)
-                                                    ->filter(fn($payment) => ($payment['method'] ?? 'cash') !== 'credit_sale')
-                                                    ->sum(fn($payment) => (float) ($payment['amount'] ?? 0));
-                                                $remaining = round(max($total - $paidPreview, 0), 2);
+                                                $moduleCart = $cartLines;
+                                                $moduleDiscounts = $availableDiscounts;
+                                                $subtotal = $orderSummary['subtotal'];
+                                                $tax = $orderSummary['tax'];
+                                                $serviceCharge = $orderSummary['service_charge'];
+                                                $discountAmount = $orderSummary['discount'];
+                                                $total = $orderSummary['total'];
+                                                $paidPreview = $orderSummary['paid'];
+                                                $remaining = $orderSummary['remaining'];
                                             @endphp
+
+                                            @if ($mixedCartModuleCount > 1)
+                                                <div class="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                                                    <div class="flex items-center gap-2">
+                                                        <span class="inline-flex h-8 w-8 items-center justify-center rounded-full bg-amber-100 text-amber-800">!</span>
+                                                        <div>
+                                                            <p class="font-semibold">Mixed-module order detected</p>
+                                                            <p class="text-sm text-amber-800">
+                                                                This sale contains items from {{ $mixedCartModuleCount }} modules: {{ $mixedCartModuleNames->join(', ') }}.
+                                                                Payments and cash register transactions will be split by module.
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            @endif
+
+                                            @error('cart')
+                                                <div class="rounded-lg border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-700">
+                                                    {{ $message }}
+                                                </div>
+                                            @enderror
 
                                             <div class="overflow-x-auto">
                                                 <table class="w-full text-left text-sm">
@@ -178,11 +207,14 @@
                                                     <tbody>
                                                         @forelse ($moduleCart as $line)
                                                             <tr class="border-b border-slate-200">
-                                                                <td class="py-2">{{ $line['item_name'] }}</td>
+                                                                <td class="py-2">
+                                                                    <div class="font-semibold">{{ $line['item_name'] }}</div>
+                                                                    <div class="text-xs text-gray-500">{{ $line['module_name'] ?? 'Module' }}</div>
+                                                                </td>
                                                                 <td class="py-2 text-center">
                                                                     <x-ui.input type="number" class="w-20"
-                                                                        wire:model.lazy="cart.{{ $module->id }}.{{ $loop->index }}.qty"
-                                                                        wire:change="updateCartItem({{ $module->id }}, {{ $line['menu_item_id'] }}, $event.target.value)"
+                                                                        wire:model.lazy="cart.{{ $loop->index }}.qty"
+                                                                        wire:change="updateCartItem({{ $line['module_id'] }}, {{ $line['menu_item_id'] }}, $event.target.value)"
                                                                         min="1" />
                                                                 </td>
                                                                 <td class="py-2 text-right">
@@ -192,7 +224,7 @@
                                                                 <td class="py-2 text-center">
                                                                     <x-ui.button type="button" variant="outline-danger"
                                                                         size="sm"
-                                                                        wire:click="removeCartItem({{ $module->id }}, {{ $line['menu_item_id'] }})">Remove</x-ui.button>
+                                                                        wire:click="removeCartItem({{ $line['module_id'] }}, {{ $line['menu_item_id'] }})">Remove</x-ui.button>
                                                                 </td>
                                                             </tr>
                                                         @empty
@@ -213,7 +245,7 @@
                                                         <span>{{ number_format($subtotal, 2) }}</span>
                                                     </div>
                                                     <div class="flex justify-between text-sm text-gray-600">
-                                                        <span>Tax ({{ number_format($taxRate * 100, 2) }}%)</span>
+                                                        <span>Tax</span>
                                                         <span>{{ number_format($tax, 2) }}</span>
                                                     </div>
                                                     <div class="flex justify-between text-sm text-gray-600">
@@ -239,83 +271,99 @@
                                                 </div>
                                             </div>
 
-                                            <div class="grid gap-3">
-                                                <div class="panel bg-slate-50 border border-slate-200 p-4">
-                                                    <h3 class="font-semibold mb-3">Order settings</h3>
-                                                    <div class="grid gap-3">
-                                                        <x-ui.select label="Order Type" name="sale_type"
-                                                            wire:model="sale_type">
-                                                            <option value="dine_in">Dine In</option>
-                                                            <option value="takeaway">Takeaway</option>
-                                                            <option value="delivery">Delivery</option>
-                                                            <option value="online">Online</option>
-                                                        </x-ui.select>
-                                                        <x-ui.checkbox label="Send order to kitchen"
-                                                            name="notifyKitchen" wire:model="notifyKitchen" />
-                                                        <x-ui.select label="Discount" name="discount_id"
-                                                            wire:model.live="discount_id">
-                                                            <option value="">No discount</option>
-                                                            @foreach ($moduleDiscounts as $discountOption)
-                                                                <option value="{{ $discountOption->id }}">
-                                                                    {{ $discountOption->name }}
-                                                                    ({{ $discountOption->type === 'percentage' ? number_format($discountOption->value, 2) . '%' : number_format($discountOption->value, 2) }})
-                                                                </option>
-                                                            @endforeach
-                                                        </x-ui.select>
-                                                        @if ($moduleTaxes->isNotEmpty())
-                                                            <div class="rounded-lg border border-slate-200 bg-white p-3 text-xs text-gray-500">
-                                                                <p class="font-bold uppercase text-gray-600">Taxes</p>
-                                                                <div class="mt-2 space-y-1">
-                                                                    @foreach ($moduleTaxes as $taxOption)
-                                                                        <div class="flex justify-between gap-3">
-                                                                            <span>{{ $taxOption->name }}</span>
-                                                                            <span>{{ number_format($taxOption->rate_percent, 2) }}%</span>
-                                                                        </div>
+                                            <div class="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4 shadow-sm">
+                                                <div class="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
+                                                    <div class="space-y-3">
+                                                        <h3 class="font-semibold">Order settings</h3>
+                                                        <div class="grid gap-3">
+                                                            <x-ui.select label="Order Type" name="sale_type"
+                                                                wire:model="sale_type">
+                                                                <option value="dine_in">Dine In</option>
+                                                                <option value="takeaway">Takeaway</option>
+                                                                <option value="delivery">Delivery</option>
+                                                                <option value="online">Online</option>
+                                                            </x-ui.select>
+                                                            @if ($sale_type === 'dine_in')
+                                                                <x-ui.select label="Table" name="table_id"
+                                                                    wire:model="table_id">
+                                                                    <option value="">Select a table</option>
+                                                                    @foreach ($availableTables as $table)
+                                                                        <option value="{{ $table->id }}">{{ $table->name }} @if($table->seats) ({{ $table->seats }} seats)@endif</option>
                                                                     @endforeach
-                                                                </div>
-                                                            </div>
-                                                        @endif
-                                                        <x-ui.input label="Notes" name="notes"
-                                                            wire:model="notes" />
-                                                    </div>
-                                                </div>
-
-                                                <div class="panel bg-slate-50 border border-slate-200 p-4">
-                                                    <div class="mb-3 flex items-center justify-between gap-3">
-                                                        <h3 class="font-semibold">Payment</h3>
-                                                        <x-ui.button type="button" size="sm" variant="secondary"
-                                                            wire:click="addPaymentRow({{ $module->id }})" icon="plus">Split</x-ui.button>
-                                                    </div>
-                                                    <div class="grid gap-3">
-                                                        @foreach ($splitPayments as $index => $payment)
-                                                            <div class="grid grid-cols-1 gap-3 rounded-lg border border-slate-200 bg-white p-3 md:grid-cols-[1fr_1fr_1fr_auto]">
-                                                                <x-ui.select label="Method"
-                                                                    name="splitPayments{{ $index }}Method"
-                                                                    wire:model.live="splitPayments.{{ $index }}.method"
-                                                                    wire:change="autofillPaymentAmount({{ $module->id }}, {{ $index }})">
-                                                                    <option value="cash">Cash</option>
-                                                                    <option value="card">Card</option>
-                                                                    <option value="mobile_money">Mobile money</option>
-                                                                    <option value="bank_transfer">Bank transfer</option>
-                                                                    <option value="wallet">Wallet</option>
-                                                                    <option value="credit_sale">Credit sale</option>
                                                                 </x-ui.select>
-                                                                <x-ui.input label="Amount" type="number"
-                                                                    name="splitPayments{{ $index }}Amount"
-                                                                    wire:model.live="splitPayments.{{ $index }}.amount"
-                                                                    min="0" step="0.01" />
-                                                                <x-ui.input label="Reference"
-                                                                    name="splitPayments{{ $index }}Reference"
-                                                                    wire:model="splitPayments.{{ $index }}.transaction_reference" />
-                                                                <div class="flex items-end">
-                                                                    <x-ui.button type="button" variant="outline-danger"
-                                                                        size="sm"
-                                                                        wire:click="removePaymentRow({{ $index }})">Remove</x-ui.button>
+                                                            @endif
+                                                            <x-ui.checkbox label="Send order to kitchen"
+                                                                name="notifyKitchen" wire:model="notifyKitchen" />
+                                                            <x-ui.select label="Discount" name="discount_id"
+                                                                wire:model.live="discount_id">
+                                                                <option value="">No discount</option>
+                                                                @foreach ($moduleDiscounts as $discountOption)
+                                                                    <option value="{{ $discountOption->id }}">
+                                                                        {{ $discountOption->name }}
+                                                                        ({{ $discountOption->type === 'percentage' ? number_format($discountOption->value, 2) . '%' : number_format($discountOption->value, 2) }})
+                                                                    </option>
+                                                                @endforeach
+                                                            </x-ui.select>
+                                                            @if ($orderSummary['module_summaries']->isNotEmpty())
+                                                                <div class="rounded-lg border border-slate-200 bg-white p-3 text-xs text-gray-500">
+                                                                    <p class="font-bold uppercase text-gray-600">Module totals</p>
+                                                                    <div class="mt-2 space-y-1">
+                                                                        @foreach ($orderSummary['module_summaries'] as $moduleSummary)
+                                                                            <div class="flex justify-between gap-3">
+                                                                                <span>{{ $moduleSummary['module_name'] }}</span>
+                                                                                <span>{{ number_format($moduleSummary['total'], 2) }}</span>
+                                                                            </div>
+                                                                        @endforeach
+                                                                    </div>
                                                                 </div>
+                                                            @endif
+                                                            <x-ui.input label="Notes" name="notes"
+                                                                wire:model="notes" />
+                                                        </div>
+                                                    </div>
+
+                                                    <div class="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
+                                                        <div class="mb-3 flex items-center justify-between gap-3">
+                                                            <h3 class="font-semibold">Payment</h3>
+                                                            <x-ui.button type="button" size="sm" variant="secondary"
+                                                                wire:click="addPaymentRow" icon="plus">Split</x-ui.button>
+                                                        </div>
+                                                        @error('splitPayments')
+                                                            <div class="rounded-lg border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-700">
+                                                                {{ $message }}
                                                             </div>
-                                                        @endforeach
-                                                        <x-ui.button wire:click="saveSale({{ $module->id }})"
-                                                            icon="shopping-cart">Place Order</x-ui.button>
+                                                        @enderror
+                                                        <div class="grid gap-3">
+                                                            @foreach ($splitPayments as $index => $payment)
+                                                                <div class="grid grid-cols-1 gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 md:grid-cols-[1fr_1fr_1fr_auto]">
+                                                                    <x-ui.select label="Method"
+                                                                        name="splitPayments{{ $index }}Method"
+                                                                        wire:model.live="splitPayments.{{ $index }}.method"
+                                                                        wire:change="autofillPaymentAmount(0, {{ $index }})">
+                                                                        <option value="cash">Cash</option>
+                                                                        <option value="card">Card</option>
+                                                                        <option value="mobile_money">Mobile money</option>
+                                                                        <option value="bank_transfer">Bank transfer</option>
+                                                                        <option value="wallet">Wallet</option>
+                                                                        <option value="credit_sale">Credit sale</option>
+                                                                    </x-ui.select>
+                                                                    <x-ui.input label="Amount" type="number"
+                                                                        name="splitPayments{{ $index }}Amount"
+                                                                        wire:model.live="splitPayments.{{ $index }}.amount"
+                                                                        min="0" step="0.01" />
+                                                                    <x-ui.input label="Reference"
+                                                                        name="splitPayments{{ $index }}Reference"
+                                                                        wire:model="splitPayments.{{ $index }}.transaction_reference" />
+                                                                    <div class="flex items-end">
+                                                                        <x-ui.button type="button" variant="outline-danger"
+                                                                            size="sm"
+                                                                            wire:click="removePaymentRow({{ $index }})">Remove</x-ui.button>
+                                                                    </div>
+                                                                </div>
+                                                            @endforeach
+                                                            <x-ui.button wire:click="saveSale"
+                                                                icon="shopping-cart">{{ $editingSaleId ? 'Update Sale' : 'Place Order' }}</x-ui.button>
+                                                        </div>
                                                     </div>
                                                 </div>
                                             </div>
@@ -351,8 +399,8 @@
             <div class="panel">
                 <div class="flex items-center justify-between mb-4">
                     <div>
-                        <h2 class="text-lg font-semibold">Last 20 sales</h2>
-                        <p class="text-sm text-gray-500">Recent orders for this branch and your assigned POS modules.
+                        <h2 class="text-lg font-semibold">Today's sales</h2>
+                        <p class="text-sm text-gray-500">Today's orders for this branch. You will see only your own entries unless you are a manager or super admin.
                         </p>
                     </div>
                 </div>
@@ -363,7 +411,7 @@
                             <tr>
                                 <th>Sale #</th>
                                 <th>Customer</th>
-                                <th>Module</th>
+                                <th>Table</th>
                                 <th>Total</th>
                                 <th>Balance</th>
                                 <th>Last Payment</th>
@@ -377,7 +425,19 @@
                                 <tr>
                                     <td>{{ $sale->sale_number }}</td>
                                     <td>{{ $sale->customer?->name ?? 'Walk-in' }}</td>
-                                    <td>{{ $sale->module?->name }}</td>
+                                    <td>
+                                        @if ($sale->table)
+                                            <span @class([
+                                                'inline-flex rounded-full px-2 py-1 text-xs font-semibold',
+                                                'bg-emerald-50 text-emerald-700' => $sale->table->status === 'available',
+                                                'bg-amber-50 text-amber-700' => $sale->table->status !== 'available',
+                                            ])>
+                                                {{ $sale->table->name }}
+                                            </span>
+                                        @else
+                                            <span class="text-xs text-gray-500">-</span>
+                                        @endif
+                                    </td>
                                     <td>{{ number_format($sale->total, 2) }}</td>
                                     <td>
                                         @if ((float) $sale->remaining_balance > 0)
@@ -403,10 +463,29 @@
                                     </td>
                                     <td>{{ ucfirst($sale->status) }}</td>
                                     <td>{{ $sale->sale_date?->format('Y-m-d H:i') }}</td>
-                                    <td class="text-center">
+                                    <td class="text-center space-y-2">
+                                        @php
+                                            $canEditSale = (float) $sale->paid_amount <= 0 && $sale->status !== 'refunded';
+                                        @endphp
+
+                                        @if ($canEditSale)
+                                            <x-ui.button type="button" size="sm" variant="primary"
+                                                wire:click="loadSaleForEdit({{ $sale->id }})" icon="pencil">Edit</x-ui.button>
+                                        @else
+                                            <x-ui.button type="button" size="sm" variant="secondary" icon="pencil"
+                                                disabled
+                                                class="cursor-not-allowed opacity-60"
+                                                title="{{ $sale->status === 'refunded' ? 'Refunded sales cannot be edited.' : 'Only unpaid sales can be edited.' }}">
+                                                Edit
+                                            </x-ui.button>
+                                        @endif
                                         @if ((float) $sale->remaining_balance > 0)
                                             <x-ui.button type="button" size="sm" variant="success"
                                                 wire:click="openRecentPayment({{ $sale->id }})" icon="banknotes">Pay</x-ui.button>
+                                        @endif
+                                        @if (\App\Support\SaleTableRelease::shouldShowButton($sale))
+                                            <x-ui.button type="button" size="sm" variant="warning"
+                                                wire:click="releaseTable({{ $sale->id }})" icon="check-circle">Release</x-ui.button>
                                         @endif
                                         <x-ui.button type="button" size="sm" variant="secondary"
                                             wire:click="viewReceipt({{ $sale->id }})" icon="eye">View</x-ui.button>
@@ -414,7 +493,7 @@
                                 </tr>
                             @empty
                                 <tr>
-                                    <td colspan="9" class="text-center py-10 text-gray-500">No sales yet.</td>
+                                    <td colspan="10" class="text-center py-10 text-gray-500">No sales recorded today yet.</td>
                                 </tr>
                             @endforelse
                         </tbody>

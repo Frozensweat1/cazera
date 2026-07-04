@@ -19,8 +19,14 @@ trait HasBranchModuleAccess
 
         $query->whereIn($query->qualifyColumn('branch_id'), $branchIds);
 
-        if ($user->isBranchManager() || ! $this->hasModuleColumn()) {
+        if ($user->isBranchManager()) {
             return $query;
+        }
+
+        if (! $this->hasModuleColumn()) {
+            return method_exists($this, 'items')
+                ? $query->whereHas('items', fn (Builder $query) => $query->whereIn($query->qualifyColumn('module_id'), $user->accessibleModules()->pluck('modules.id')))
+                : $query;
         }
 
         return $query->whereIn($query->qualifyColumn('module_id'), $user->accessibleModules()->pluck('modules.id'));
@@ -33,8 +39,16 @@ trait HasBranchModuleAccess
 
     public function scopeForModule(Builder $query, mixed $moduleId): Builder
     {
-        return $moduleId && $this->hasModuleColumn()
-            ? $query->where($query->qualifyColumn('module_id'), $moduleId)
+        if (! $moduleId) {
+            return $query;
+        }
+
+        if ($this->hasModuleColumn()) {
+            return $query->where($query->qualifyColumn('module_id'), $moduleId);
+        }
+
+        return method_exists($this, 'items')
+            ? $query->whereHas('items', fn (Builder $query) => $query->where($query->qualifyColumn('module_id'), $moduleId))
             : $query;
     }
 

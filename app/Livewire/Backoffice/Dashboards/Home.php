@@ -7,6 +7,7 @@ use App\Livewire\Concerns\HasBranchScope;
 use App\Models\Payment;
 use App\Models\Sale;
 use App\Models\SaleItem;
+use App\Support\SaleModuleAllocation;
 use Carbon\CarbonPeriod;
 use Illuminate\Support\Facades\DB;
 use Livewire\Component;
@@ -58,9 +59,11 @@ class Home extends Component
             'sale_date'
         )->whereNotIn('status', ['cancelled', 'refunded']);
 
-        $this->grossSales = (float) (clone $salesQuery)->sum('total');
-        $this->collectedSales = (float) (clone $salesQuery)->sum('paid_amount');
-        $this->outstandingDebt = (float) (clone $salesQuery)->sum('remaining_balance');
+        $moduleId = $this->dashboardModuleId();
+
+        $this->grossSales = SaleModuleAllocation::sum($salesQuery, 'total', $moduleId);
+        $this->collectedSales = SaleModuleAllocation::sum($salesQuery, 'paid_amount', $moduleId);
+        $this->outstandingDebt = SaleModuleAllocation::sum($salesQuery, 'remaining_balance', $moduleId);
         $this->totalOrders = (int) (clone $salesQuery)->count();
         $this->completedOrders = (int) (clone $salesQuery)->whereIn('status', ['completed', 'paid'])->count();
         $this->openOrders = (int) (clone $salesQuery)->whereNotIn('status', ['completed', 'paid', 'cancelled', 'refunded'])->count();
@@ -71,16 +74,17 @@ class Home extends Component
         )->where('status', 'refunded')->count();
 
         $days = collect(CarbonPeriod::create($from->copy()->startOfDay(), $to->copy()->startOfDay()));
-        $salesByDay = (clone $salesQuery)
-            ->selectRaw('DATE(sale_date) as date, SUM(paid_amount) as collected, COUNT(*) as orders')
+        $salesByDay = SaleModuleAllocation::byDate($salesQuery, 'paid_amount', $moduleId);
+        $ordersByDay = (clone $salesQuery)
+            ->selectRaw('DATE(sale_date) as date, COUNT(*) as orders')
             ->groupBy('date')
             ->orderBy('date')
             ->get()
             ->keyBy('date');
 
         $this->salesLabels = $days->map(fn ($day) => $day->format('M d'))->toArray();
-        $this->salesSeries = $days->map(fn ($day) => round((float) ($salesByDay->get($day->toDateString())->collected ?? 0), 2))->toArray();
-        $this->ordersSeries = $days->map(fn ($day) => (int) ($salesByDay->get($day->toDateString())->orders ?? 0))->toArray();
+        $this->salesSeries = $days->map(fn ($day) => round((float) ($salesByDay->get($day->toDateString())->total ?? 0), 2))->toArray();
+        $this->ordersSeries = $days->map(fn ($day) => (int) ($ordersByDay->get($day->toDateString())->orders ?? 0))->toArray();
 
         $categoryData = $this->applyDashboardScope(SaleItem::query(), 'sale_items.branch_id', 'sale_items.module_id')
             ->join('sales', 'sale_items.sale_id', '=', 'sales.id')

@@ -28,25 +28,25 @@
 
         <x-ui.card>
             <div class="text-sm text-gray-500">Revenue</div>
-            <div class="mt-3 text-3xl font-bold">${{ number_format($totalRevenue, 2) }}</div>
+            <div class="mt-3 text-3xl font-bold"><x-ui.money :amount="$totalRevenue" /></div>
             <div class="mt-2 text-sm text-gray-500">Gross sales revenue in the period.</div>
         </x-ui.card>
 
         <x-ui.card>
             <div class="text-sm text-gray-500">Avg. Order Value</div>
-            <div class="mt-3 text-3xl font-bold">${{ number_format($averageOrderValue, 2) }}</div>
+            <div class="mt-3 text-3xl font-bold"><x-ui.money :amount="$averageOrderValue" /></div>
             <div class="mt-2 text-sm text-gray-500">Average sale ticket size.</div>
         </x-ui.card>
 
         <x-ui.card>
             <div class="text-sm text-gray-500">Outstanding Debt</div>
-            <div class="mt-3 text-3xl font-bold">${{ number_format($outstandingDebt, 2) }}</div>
+            <div class="mt-3 text-3xl font-bold"><x-ui.money :amount="$outstandingDebt" /></div>
             <div class="mt-2 text-sm text-gray-500">Current uncollected balance from outstanding sales.</div>
         </x-ui.card>
 
         <x-ui.card>
             <div class="text-sm text-gray-500">Inventory Value</div>
-            <div class="mt-3 text-3xl font-bold">${{ number_format($inventoryValue, 2) }}</div>
+            <div class="mt-3 text-3xl font-bold"><x-ui.money :amount="$inventoryValue" /></div>
             <div class="mt-2 text-sm text-gray-500">Estimated value of stock on hand.</div>
         </x-ui.card>
 
@@ -112,11 +112,11 @@
                 </div>
                 <div class="flex items-center justify-between border-b border-gray-200 pb-3">
                     <span>Total Expense Amount</span>
-                    <span>${{ number_format($expenseTotal, 2) }}</span>
+                    <span><x-ui.money :amount="$expenseTotal" /></span>
                 </div>
                 <div class="flex items-center justify-between border-b border-gray-200 pb-3">
                     <span>Maintenance Actual Cost</span>
-                    <span>${{ number_format($maintenanceActualCost, 2) }}</span>
+                    <span><x-ui.money :amount="$maintenanceActualCost" /></span>
                 </div>
                 <div class="flex items-center justify-between pt-3 text-sm text-gray-500">
                     <span>Branch</span>
@@ -169,7 +169,7 @@
                                 <p class="text-xs text-gray-500">Qty sold: {{ number_format($item->total_qty, 2) }}</p>
                             </div>
                             <span
-                                class="text-sm font-semibold text-gray-900">${{ number_format($item->total_revenue, 2) }}</span>
+                                class="text-sm font-semibold text-gray-900"><x-ui.money :amount="$item->total_revenue" /></span>
                         </div>
                     </div>
                 @endforeach
@@ -188,7 +188,7 @@
                                     {{ number_format($category->total_qty, 2) }}</p>
                             </div>
                             <span
-                                class="text-sm font-semibold text-gray-900">${{ number_format($category->total_revenue, 2) }}</span>
+                                class="text-sm font-semibold text-gray-900"><x-ui.money :amount="$category->total_revenue" /></span>
                         </div>
                     </div>
                 @endforeach
@@ -209,7 +209,7 @@
                                 <p class="text-xs text-gray-500">Orders: {{ number_format($customer->orders) }}</p>
                             </div>
                             <span
-                                class="text-sm font-semibold text-gray-900">${{ number_format($customer->spent, 2) }}</span>
+                                class="text-sm font-semibold text-gray-900"><x-ui.money :amount="$customer->spent" /></span>
                         </div>
                     </div>
                 @endforeach
@@ -228,7 +228,7 @@
                                 <p class="text-xs text-gray-500">Orders: {{ number_format($staff->orders) }}</p>
                             </div>
                             <span
-                                class="text-sm font-semibold text-gray-900">${{ number_format($staff->revenue, 2) }}</span>
+                                class="text-sm font-semibold text-gray-900"><x-ui.money :amount="$staff->revenue" /></span>
                         </div>
                     </div>
                 @endforeach
@@ -250,7 +250,7 @@
                                     {{ number_format($supplier->item_count) }}</p>
                             </div>
                             <span
-                                class="text-sm font-semibold text-gray-900">${{ number_format($supplier->value_on_hand, 2) }}</span>
+                                class="text-sm font-semibold text-gray-900"><x-ui.money :amount="$supplier->value_on_hand" /></span>
                         </div>
                     </div>
                 @endforeach
@@ -269,7 +269,7 @@
                                 <p class="text-xs text-gray-500">Expense total by category</p>
                             </div>
                             <span
-                                class="text-sm font-semibold text-gray-900">${{ number_format($category->total_amount, 2) }}</span>
+                                class="text-sm font-semibold text-gray-900"><x-ui.money :amount="$category->total_amount" /></span>
                         </div>
                     </div>
                 @endforeach
@@ -330,7 +330,7 @@
                                             {{ optional($expense->branch)->name ?? 'No branch' }}</p>
                                     </div>
                                     <span
-                                        class="text-xs font-semibold text-gray-900">${{ number_format($expense->amount, 2) }}</span>
+                                        class="text-xs font-semibold text-gray-900"><x-ui.money :amount="$expense->amount" /></span>
                                 </div>
                                 <div class="mt-2 text-xs text-gray-500">
                                     {{ $expense->expense_date?->format('M d, Y') ?? '—' }}</div>

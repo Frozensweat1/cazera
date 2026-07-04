@@ -65,6 +65,12 @@ trait HasDashboardFilters
         }
 
         if ($moduleId = $this->dashboardModuleId()) {
+            if (! $moduleColumn && $query->getModel()->getTable() === 'sales') {
+                $query->whereHas('items', fn (Builder $query) => $query->where($query->qualifyColumn('module_id'), $moduleId));
+
+                return $query;
+            }
+
             $query->where($moduleColumn ?: $query->getModel()->qualifyColumn('module_id'), $moduleId);
         }
 

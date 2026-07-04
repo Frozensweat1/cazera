@@ -3,7 +3,7 @@
         <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
                 <h1 class="text-2xl font-bold">Net Revenue</h1>
-                <p class="text-gray-500">Compare collected sales against production costs and operating expenses.</p>
+                <p class="text-gray-500">Compare collected sales against sold item cost, production, maintenance, and operating expenses.</p>
             </div>
         </div>
 
@@ -30,26 +30,34 @@
             </div>
         </div>
 
-        <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-6">
+        <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-8">
             <div class="panel">
                 <p class="text-sm text-gray-500">Gross Sales</p>
-                <p class="mt-2 text-2xl font-extrabold text-gray-950">{{ number_format($summary['gross_sales'], 2) }}</p>
+                <p class="mt-2 text-2xl font-extrabold text-gray-950"><x-ui.money :amount="$summary['gross_sales']" /></p>
             </div>
             <div class="panel">
                 <p class="text-sm text-gray-500">Collected Sales</p>
-                <p class="mt-2 text-2xl font-extrabold text-emerald-700">{{ number_format($summary['sales_collected'], 2) }}</p>
+                <p class="mt-2 text-2xl font-extrabold text-emerald-700"><x-ui.money :amount="$summary['sales_collected']" /></p>
             </div>
             <div class="panel">
                 <p class="text-sm text-gray-500">Refunds</p>
-                <p class="mt-2 text-2xl font-extrabold text-red-700">{{ number_format($summary['refunds'], 2) }}</p>
+                <p class="mt-2 text-2xl font-extrabold text-red-700"><x-ui.money :amount="$summary['refunds']" /></p>
+            </div>
+            <div class="panel">
+                <p class="text-sm text-gray-500">Item Cost</p>
+                <p class="mt-2 text-2xl font-extrabold text-purple-700"><x-ui.money :amount="$summary['trackable_item_costs']" /></p>
             </div>
             <div class="panel">
                 <p class="text-sm text-gray-500">Production Costs</p>
-                <p class="mt-2 text-2xl font-extrabold text-amber-700">{{ number_format($summary['production_costs'], 2) }}</p>
+                <p class="mt-2 text-2xl font-extrabold text-amber-700"><x-ui.money :amount="$summary['production_costs']" /></p>
+            </div>
+            <div class="panel">
+                <p class="text-sm text-gray-500">Maintenance</p>
+                <p class="mt-2 text-2xl font-extrabold text-cyan-700"><x-ui.money :amount="$summary['maintenance_costs']" /></p>
             </div>
             <div class="panel">
                 <p class="text-sm text-gray-500">Expenses</p>
-                <p class="mt-2 text-2xl font-extrabold text-orange-700">{{ number_format($summary['expenses'], 2) }}</p>
+                <p class="mt-2 text-2xl font-extrabold text-orange-700"><x-ui.money :amount="$summary['expenses']" /></p>
             </div>
             <div class="panel">
                 <p class="text-sm text-gray-500">Net Revenue</p>
@@ -57,7 +65,7 @@
                     'mt-2 text-2xl font-extrabold',
                     'text-emerald-700' => $summary['net_revenue'] >= 0,
                     'text-red-700' => $summary['net_revenue'] < 0,
-                ])>{{ number_format($summary['net_revenue'], 2) }}</p>
+                ])><x-ui.money :amount="$summary['net_revenue']" /></p>
             </div>
         </div>
 
@@ -65,7 +73,7 @@
             <div class="panel xl:col-span-2">
                 <div class="mb-5">
                     <h2 class="text-lg font-bold text-gray-950">Branch & Module Performance</h2>
-                    <p class="text-sm text-gray-500">Collected sales less production costs and expenses.</p>
+                    <p class="text-sm text-gray-500">Collected sales less sold item cost, production, maintenance, and expenses.</p>
                 </div>
 
                 <x-ui.table>
@@ -74,7 +82,9 @@
                             <th>Branch</th>
                             <th>Module</th>
                             <th>Collected</th>
+                            <th>Item Cost</th>
                             <th>Production</th>
+                            <th>Maintenance</th>
                             <th>Expenses</th>
                             <th class="text-right">Net</th>
                         </tr>
@@ -84,18 +94,20 @@
                             <tr>
                                 <td>{{ $row['branch'] }}</td>
                                 <td>{{ $row['module'] }}</td>
-                                <td>{{ number_format($row['paid'], 2) }}</td>
-                                <td>{{ number_format($row['production'], 2) }}</td>
-                                <td>{{ number_format($row['expenses'], 2) }}</td>
+                                <td><x-ui.money :amount="$row['paid']" /></td>
+                                <td><x-ui.money :amount="$row['item_cost']" /></td>
+                                <td><x-ui.money :amount="$row['production']" /></td>
+                                <td><x-ui.money :amount="$row['maintenance']" /></td>
+                                <td><x-ui.money :amount="$row['expenses']" /></td>
                                 <td @class([
                                     'text-right font-bold',
                                     'text-emerald-700' => $row['net'] >= 0,
                                     'text-red-700' => $row['net'] < 0,
-                                ])>{{ number_format($row['net'], 2) }}</td>
+                                ])><x-ui.money :amount="$row['net']" /></td>
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="6" class="py-10 text-center text-gray-500">No revenue records found for the selected period.</td>
+                                <td colspan="8" class="py-10 text-center text-gray-500">No revenue records found for the selected period.</td>
                             </tr>
                         @endforelse
                     </tbody>
@@ -113,7 +125,7 @@
                                         <p class="font-semibold text-gray-950">{{ $expense->title }}</p>
                                         <p class="text-xs text-gray-500">{{ $expense->category?->name }} / {{ $expense->expense_date?->format('M d, Y') }}</p>
                                     </div>
-                                    <p class="font-bold text-orange-700">{{ number_format($expense->amount, 2) }}</p>
+                                    <p class="font-bold text-orange-700"><x-ui.money :amount="$expense->amount" /></p>
                                 </div>
                             </div>
                         @empty
@@ -132,7 +144,7 @@
                                         <p class="font-semibold text-gray-950">{{ $cost->title }}</p>
                                         <p class="text-xs text-gray-500">{{ $cost->branch?->name }} / {{ $cost->production_date?->format('M d, Y') }}</p>
                                     </div>
-                                    <p class="font-bold text-amber-700">{{ number_format($cost->amount, 2) }}</p>
+                                    <p class="font-bold text-amber-700"><x-ui.money :amount="$cost->amount" /></p>
                                 </div>
                             </div>
                         @empty

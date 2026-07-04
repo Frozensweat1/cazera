@@ -86,7 +86,16 @@
                 <tbody>
                     @forelse ($sales as $sale)
                         <tr>
-                            <td>{{ $sale->sale_number }}</td>
+                            <td>
+                                <div class="flex items-center gap-2">
+                                    <span>{{ $sale->sale_number }}</span>
+                                    @if ($sale->table)
+                                        <span class="rounded-full bg-sky-100 text-sky-700 px-2 py-0.5 text-[11px] font-semibold">
+                                            Table {{ $sale->table->name }}
+                                        </span>
+                                    @endif
+                                </div>
+                            </td>
                             <td>{{ $sale->sale_date->format('Y-m-d H:i') }}</td>
                             <td>{{ $sale->customer?->name ?? 'Walk-in' }}</td>
                             <td>
@@ -121,6 +130,9 @@
                                         x-on:click="$nextTick(() => setTimeout(() => printReceipt(), 650))">Print</x-ui.table-dropdown-item>
                                     @if ((float) $sale->remaining_balance > 0 && $sale->status !== 'refunded')
                                         <x-ui.table-dropdown-item icon="banknotes" wire:click="openPayment({{ $sale->id }})">Payment</x-ui.table-dropdown-item>
+                                    @endif
+                                    @if (\App\Support\SaleTableRelease::shouldShowButton($sale))
+                                        <x-ui.table-dropdown-item icon="check-circle" wire:click="releaseTable({{ $sale->id }})">Release Table</x-ui.table-dropdown-item>
                                     @endif
                                     @if ((float) $sale->paid_amount > 0 && $sale->status !== 'refunded')
                                         <x-ui.table-dropdown-item danger icon="arrow-uturn-left" wire:click="openRefund({{ $sale->id }})">Refund</x-ui.table-dropdown-item>

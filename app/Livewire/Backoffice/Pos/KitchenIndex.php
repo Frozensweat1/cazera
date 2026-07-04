@@ -5,6 +5,7 @@ namespace App\Livewire\Backoffice\Pos;
 use App\Livewire\Concerns\HasBranchScope;
 use App\Models\Sale;
 use App\Models\SaleItem;
+use App\Support\SaleTableRelease;
 use Jantinnerezo\LivewireAlert\Facades\LivewireAlert;
 use Illuminate\Support\Str;
 use Livewire\Component;
@@ -44,7 +45,7 @@ class KitchenIndex extends Component
             ->whereHas('items', $kitchenItemScope)
             ->when($selectedBranchId, fn($query) => $query->where('branch_id', $selectedBranchId))
             ->when($this->filterBranch, fn($query) => $query->where('branch_id', $this->filterBranch))
-            ->when($this->filterModule, fn($query) => $query->where('module_id', $this->filterModule))
+            ->forModule($this->filterModule)
             ->oldest('sale_date')
             ->paginate(12);
 
@@ -145,6 +146,8 @@ class KitchenIndex extends Component
                     'served_at' => $sale->served_at ?? now(),
                     'completed_at' => (float) $sale->remaining_balance <= 0 ? now() : $sale->completed_at,
                 ]);
+
+                SaleTableRelease::releaseIfSettled($sale->fresh());
 
                 return;
             }

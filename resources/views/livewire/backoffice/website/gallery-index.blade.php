@@ -33,16 +33,16 @@
                 <x-ui.input label="Title" name="title" wire:model.live="title" />
                 <x-ui.input label="Slug" name="slug" wire:model.live="slug" />
                 <x-ui.select label="Category" name="category" wire:model="category">@foreach ($categories as $cat)<option value="{{ $cat }}">{{ str($cat)->headline() }}</option>@endforeach</x-ui.select>
-                <x-ui.select label="Type" name="type" wire:model="type"><option value="image">Image</option><option value="video">Video</option></x-ui.select>
+                <x-ui.select label="Type" name="type" wire:model.live="type"><option value="image">Image</option><option value="video">Video</option></x-ui.select>
                 <div>
-                    <x-ui.input label="Image URL / Storage Path" name="image" wire:model.live="image" />
-                    <p class="mt-1 text-xs text-gray-500">Paste an external image URL or existing storage path.</p>
+                    <x-ui.input label="{{ $type === 'video' ? 'Thumbnail URL / Storage Path' : 'Image URL / Storage Path' }}" name="image" wire:model.live="image" />
+                    <p class="mt-1 text-xs text-gray-500">{{ $type === 'video' ? 'Optional thumbnail for the video card.' : 'Paste an external image URL or existing storage path.' }}</p>
                 </div>
                 <div>
-                    <label for="gallery_image_upload" class="form-label mb-2">Upload Image</label>
+                    <label for="gallery_image_upload" class="form-label mb-2">{{ $type === 'video' ? 'Upload Thumbnail' : 'Upload Image' }}</label>
                     <input id="gallery_image_upload" type="file" wire:model="image_upload" accept="image/*"
                         class="form-input w-full rounded-lg border border-slate-200 bg-white p-2 text-sm dark:border-slate-700 dark:bg-[#0e1726]">
-                    <p class="mt-1 text-xs text-gray-500">Uploading a file will replace the URL/path when saved.</p>
+                    <p class="mt-1 text-xs text-gray-500">{{ $type === 'video' ? 'Optional poster image. Uploading a file will replace the thumbnail URL/path when saved.' : 'Uploading a file will replace the URL/path when saved.' }}</p>
                     @error('image_upload')
                         <div class="mt-1 text-xs font-semibold text-danger">{{ $message }}</div>
                     @enderror
@@ -58,7 +58,15 @@
                         </div>
                     </div>
                 @endif
-                <x-ui.input label="Video URL" name="video_url" wire:model.live="video_url" />
+                @if ($type === 'video')
+                    <div class="md:col-span-2">
+                        <x-ui.input label="Social Video URL" type="url" name="video_url" wire:model.live="video_url" placeholder="https://www.youtube.com/watch?v=..." />
+                        <p class="mt-1 text-xs text-gray-500">Use a public URL from YouTube, Vimeo, Instagram, Facebook, TikTok, X/Twitter, or LinkedIn.</p>
+                        @error('video_url')
+                            <div class="mt-1 text-xs font-semibold text-danger">{{ $message }}</div>
+                        @enderror
+                    </div>
+                @endif
                 <x-ui.input label="Sort Order" type="number" name="sort_order" wire:model.live="sort_order" />
                 <div class="md:col-span-2"><x-ui.textarea label="Description" name="description" wire:model.live="description" /></div>
                 <x-ui.checkbox label="Featured" name="is_featured" wire:model="is_featured" />

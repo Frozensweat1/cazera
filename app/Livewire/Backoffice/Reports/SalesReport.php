@@ -4,8 +4,11 @@ namespace App\Livewire\Backoffice\Reports;
 
 use App\Livewire\Concerns\HasBranchScope;
 use App\Models\CashRegisterTransaction;
+use App\Models\Module;
 use App\Models\Sale;
 use App\Models\SaleItem;
+use App\Support\SaleModuleAllocation;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 use Livewire\Component;
 
@@ -32,20 +35,20 @@ class SalesReport extends Component
 
         $sales = Sale::accessible()
             ->when($branchId, fn($query) => $query->where('branch_id', $branchId))
-            ->when($this->filterModule, fn($query) => $query->where('module_id', $this->filterModule))
-            ->where('status', '!=', 'cancelled')
+            ->forModule($this->filterModule)
+            ->whereNotIn('status', ['cancelled', 'refunded'])
             ->whereBetween('sale_date', [$startDate, $endDate]);
 
         $saleItems = SaleItem::accessible()
             ->when($branchId, fn($query) => $query->where('sale_items.branch_id', $branchId))
             ->when($this->filterModule, fn($query) => $query->where('sale_items.module_id', $this->filterModule))
-            ->whereHas('sale', fn($query) => $query->whereBetween('sale_date', [$startDate, $endDate])->where('status', '!=', 'cancelled'));
+            ->whereHas('sale', fn($query) => $query->whereBetween('sale_date', [$startDate, $endDate])->whereNotIn('status', ['cancelled', 'refunded']));
 
         $totalOrders = (clone $sales)->count();
-        $totalRevenue = (clone $sales)->sum('total');
-        $collectedRevenue = (clone $sales)->sum('paid_amount');
+        $totalRevenue = SaleModuleAllocation::sum($sales, 'total', $this->filterModule);
+        $collectedRevenue = SaleModuleAllocation::sum($sales, 'paid_amount', $this->filterModule);
         $averageOrderValue = $totalOrders ? $totalRevenue / $totalOrders : 0;
-        $debtBalance = (clone $sales)->where('is_debt', true)->sum('remaining_balance');
+        $debtBalance = SaleModuleAllocation::sum((clone $sales)->where('is_debt', true), 'remaining_balance', $this->filterModule);
         $refunds = abs((float) CashRegisterTransaction::accessible()
             ->when($branchId, fn($query) => $query->where('branch_id', $branchId))
             ->when($this->filterModule, fn($query) => $query->where('module_id', $this->filterModule))
@@ -92,13 +95,7 @@ class SalesReport extends Component
             ->orderByDesc('total_amount')
             ->get();
 
-        $moduleBreakdown = (clone $sales)
-            ->selectRaw('module_id, count(*) as orders, sum(total) as total_amount, sum(paid_amount) as paid_amount')
-            ->with('module')
-            ->groupBy('module_id')
-            ->orderByDesc('paid_amount')
-            ->take(8)
-            ->get();
+        $moduleBreakdown = $this->moduleSalesBreakdown($branchId, $startDate, $endDate)->take(8);
 
         return view('livewire.backoffice.reports.sales', [
             'branches' => $this->accessibleBranches(),
@@ -127,5 +124,42 @@ class SalesReport extends Component
     public function updatedFilterBranch(): void
     {
         $this->filterModule = '';
+    }
+
+    protected function moduleSalesBreakdown($branchId, Carbon $startDate, Carbon $endDate)
+    {
+        $sales = Sale::accessible()
+            ->with('items')
+            ->when($branchId, fn (Builder $query) => $query->where('branch_id', $branchId))
+            ->forModule($this->filterModule)
+            ->whereNotIn('status', ['cancelled', 'refunded'])
+            ->whereBetween('sale_date', [$startDate, $endDate])
+            ->get();
+
+        $modules = Module::query()->whereIn('id', $sales->flatMap->items->pluck('module_id')->filter()->unique())->get()->keyBy('id');
+
+        return $sales
+            ->flatMap(function (Sale $sale) {
+                $totalSplit = $sale->moduleBreakdownForAmount((float) $sale->total, $sale->items);
+                $paidSplit = $sale->moduleBreakdownForAmount((float) $sale->paid_amount, $sale->items);
+
+                return $totalSplit->map(fn ($total, $moduleId) => (object) [
+                    'module_id' => (int) $moduleId,
+                    'orders' => 1,
+                    'total_amount' => (float) $total,
+                    'paid_amount' => (float) ($paidSplit->get($moduleId) ?? 0),
+                ]);
+            })
+            ->groupBy('module_id')
+            ->map(function ($rows, $moduleId) use ($modules) {
+                return (object) [
+                    'module' => $modules->get((int) $moduleId),
+                    'orders' => $rows->sum('orders'),
+                    'total_amount' => $rows->sum('total_amount'),
+                    'paid_amount' => $rows->sum('paid_amount'),
+                ];
+            })
+            ->sortByDesc('paid_amount')
+            ->values();
     }
 }

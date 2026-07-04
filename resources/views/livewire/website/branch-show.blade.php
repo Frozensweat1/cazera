@@ -88,7 +88,14 @@
             <template x-if="active">
                 <div class="fixed inset-0 z-[70] grid place-items-center bg-ink/90 p-4" @click.self="active = null" @keydown.escape.window="active = null">
                     <button type="button" @click="active = null" class="absolute right-5 top-5 rounded-full bg-ivory px-4 py-2 text-sm font-bold text-ink">Close</button>
-                    <img :src="active.image" :alt="active.title" class="max-h-[82vh] rounded-2xl object-contain">
+                    <div class="max-w-5xl">
+                        <img :src="active.image" :alt="active.title" class="max-h-[82vh] rounded-2xl object-contain">
+                        <template x-if="active.type === 'video' && active.video_url">
+                            <div class="mt-4 text-center">
+                                <a :href="active.video_url" target="_blank" rel="noopener" class="inline-flex rounded-full bg-gold px-5 py-3 text-sm font-bold text-ink">Open video</a>
+                            </div>
+                        </template>
+                    </div>
                 </div>
             </template>
         </div>

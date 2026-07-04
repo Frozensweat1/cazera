@@ -8,6 +8,7 @@ use App\Models\InventoryItem;
 use App\Models\MaintenanceRequest;
 use App\Models\Sale;
 use App\Models\SaleItem;
+use App\Support\AccountingMetrics;
 use Livewire\Component;
 
 class Index extends Component
@@ -21,10 +22,12 @@ class Index extends Component
         $branchId = $this->filterBranch ?: (auth()->user()?->isSuperAdmin() ? null : session('branch_id'));
 
         $saleQuery = Sale::accessible()
-            ->when($branchId, fn($query) => $query->where('branch_id', $branchId));
+            ->when($branchId, fn($query) => $query->where('branch_id', $branchId))
+            ->whereNotIn('status', ['cancelled', 'refunded']);
 
         $saleItemQuery = SaleItem::accessible()
-            ->when($branchId, fn($query) => $query->where('sale_items.branch_id', $branchId));
+            ->when($branchId, fn($query) => $query->where('sale_items.branch_id', $branchId))
+            ->whereHas('sale', fn($query) => $query->whereNotIn('status', ['cancelled', 'refunded']));
 
         $expenseQuery = Expense::accessible()
             ->when($branchId, fn($query) => $query->where('branch_id', $branchId));
@@ -49,29 +52,26 @@ class Index extends Component
         $openMaintenanceRequests = clone $maintenanceQuery;
         $openMaintenanceRequests = $openMaintenanceRequests->whereNotIn('status', ['completed', 'rejected', 'cancelled'])->count();
 
-        $cogs = clone $saleItemQuery;
-        $cogs = $cogs
-            ->join('menu_items', 'sale_items.menu_item_id', '=', 'menu_items.id')
-            ->selectRaw('sum(sale_items.qty * menu_items.cost_price) as cogs')
-            ->value('cogs') ?: 0;
+        $cogs = AccountingMetrics::soldTrackableMenuItemCost($saleItemQuery);
 
         $grossProfit = $totalRevenue - $cogs;
         $grossMargin = $totalRevenue ? round(($grossProfit / $totalRevenue) * 100, 2) : 0;
 
         $totalInventoryItemsQuery = clone $inventoryQuery;
         $totalInventoryItems = $totalInventoryItemsQuery->count();
-        $inventoryValueQuery = clone $inventoryQuery;
-        $inventoryValue = $inventoryValueQuery
-            ->selectRaw('sum(quantity_on_hand * unit_cost) as value')
-            ->value('value') ?: 0;
+        $inventoryValue = AccountingMetrics::inventoryHoldingsAtSellingPrice($inventoryQuery);
 
         $lowStockQuery = clone $inventoryQuery;
         $lowStockCount = $lowStockQuery
+            ->where('is_trackable', true)
+            ->where('is_active', true)
             ->whereColumn('quantity_on_hand', '<=', 'reorder_level')
             ->count();
 
         $reorderAlertsQuery = clone $inventoryQuery;
         $reorderAlerts = $reorderAlertsQuery
+            ->where('is_trackable', true)
+            ->where('is_active', true)
             ->whereColumn('quantity_on_hand', '<=', 'reorder_level')
             ->orderByRaw('(reorder_level - quantity_on_hand) desc')
             ->take(5)
@@ -124,7 +124,9 @@ class Index extends Component
 
         $topSuppliersQuery = clone $inventoryQuery;
         $topSuppliers = $topSuppliersQuery
-            ->selectRaw('supplier_id, count(*) as item_count, sum(quantity_on_hand * unit_cost) as value_on_hand')
+            ->where('is_trackable', true)
+            ->where('is_active', true)
+            ->selectRaw('supplier_id, count(*) as item_count, sum(quantity_on_hand * COALESCE(unit_price, 0)) as value_on_hand')
             ->with('supplier')
             ->groupBy('supplier_id')
             ->orderByDesc('value_on_hand')

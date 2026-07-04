@@ -34,21 +34,22 @@
         </div>
 
         <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
-            <div class="panel"><p class="text-sm text-gray-500">Gross Sales</p><p class="mt-2 text-2xl font-extrabold">{{ number_format($revenue, 2) }}</p></div>
-            <div class="panel"><p class="text-sm text-gray-500">Collected</p><p class="mt-2 text-2xl font-extrabold text-emerald-700">{{ number_format($collectedRevenue, 2) }}</p></div>
-            <div class="panel"><p class="text-sm text-gray-500">Operating Cost</p><p class="mt-2 text-2xl font-extrabold text-amber-700">{{ number_format($operatingCost, 2) }}</p></div>
-            <div class="panel"><p class="text-sm text-gray-500">Net Estimate</p><p @class(['mt-2 text-2xl font-extrabold', 'text-emerald-700' => $profitEstimate >= 0, 'text-red-700' => $profitEstimate < 0])>{{ number_format($profitEstimate, 2) }}</p></div>
+            <div class="panel"><p class="text-sm text-gray-500">Gross Sales</p><p class="mt-2 text-2xl font-extrabold"><x-ui.money :amount="$revenue" /></p></div>
+            <div class="panel"><p class="text-sm text-gray-500">Collected</p><p class="mt-2 text-2xl font-extrabold text-emerald-700"><x-ui.money :amount="$collectedRevenue" /></p></div>
+            <div class="panel"><p class="text-sm text-gray-500">Operating Cost</p><p class="mt-2 text-2xl font-extrabold text-amber-700"><x-ui.money :amount="$operatingCost" /></p></div>
+            <div class="panel"><p class="text-sm text-gray-500">Net Estimate</p><p @class(['mt-2 text-2xl font-extrabold', 'text-emerald-700' => $profitEstimate >= 0, 'text-red-700' => $profitEstimate < 0])><x-ui.money :amount="$profitEstimate" /></p></div>
             <div class="panel"><p class="text-sm text-gray-500">Margin</p><p class="mt-2 text-2xl font-extrabold">{{ number_format($profitMargin, 2) }}%</p></div>
-            <div class="panel"><p class="text-sm text-gray-500">Refunds</p><p class="mt-2 text-2xl font-extrabold text-red-700">{{ number_format($refunds, 2) }}</p></div>
+            <div class="panel"><p class="text-sm text-gray-500">Refunds</p><p class="mt-2 text-2xl font-extrabold text-red-700"><x-ui.money :amount="$refunds" /></p></div>
         </div>
 
         <div class="grid gap-6 xl:grid-cols-3">
             <div class="panel">
                 <h3 class="text-lg font-bold text-gray-900">Cost Composition</h3>
                 <div class="mt-4 space-y-3">
-                    <div class="flex justify-between rounded-lg bg-slate-50 p-3"><span>Expenses</span><strong>{{ number_format($expenseTotal, 2) }}</strong></div>
-                    <div class="flex justify-between rounded-lg bg-slate-50 p-3"><span>Production Costs</span><strong>{{ number_format($productionCostTotal, 2) }}</strong></div>
-                    <div class="flex justify-between rounded-lg bg-slate-50 p-3"><span>Maintenance Actual</span><strong>{{ number_format($maintenanceActualCost, 2) }}</strong></div>
+                    <div class="flex justify-between rounded-lg bg-slate-50 p-3"><span>Trackable Item Cost</span><strong><x-ui.money :amount="$trackableItemCost" /></strong></div>
+                    <div class="flex justify-between rounded-lg bg-slate-50 p-3"><span>Expenses</span><strong><x-ui.money :amount="$expenseTotal" /></strong></div>
+                    <div class="flex justify-between rounded-lg bg-slate-50 p-3"><span>Production Costs</span><strong><x-ui.money :amount="$productionCostTotal" /></strong></div>
+                    <div class="flex justify-between rounded-lg bg-slate-50 p-3"><span>Maintenance Actual</span><strong><x-ui.money :amount="$maintenanceActualCost" /></strong></div>
                 </div>
             </div>
 
@@ -59,7 +60,7 @@
                         <thead class="text-xs uppercase text-gray-500"><tr><th class="py-2">Module</th><th>Orders</th><th>Collected</th><th>Costs</th><th class="text-right">Net</th></tr></thead>
                         <tbody class="divide-y divide-slate-100">
                             @forelse ($moduleProfitability as $row)
-                                <tr><td class="py-3 font-semibold">{{ $row['module'] }}</td><td>{{ number_format($row['orders']) }}</td><td>{{ number_format($row['collected'], 2) }}</td><td>{{ number_format($row['costs'], 2) }}</td><td @class(['text-right font-bold', 'text-emerald-700' => $row['net'] >= 0, 'text-red-700' => $row['net'] < 0])>{{ number_format($row['net'], 2) }}</td></tr>
+                                <tr><td class="py-3 font-semibold">{{ $row['module'] }}</td><td>{{ number_format($row['orders']) }}</td><td><x-ui.money :amount="$row['collected']" /></td><td><x-ui.money :amount="$row['costs']" /></td><td @class(['text-right font-bold', 'text-emerald-700' => $row['net'] >= 0, 'text-red-700' => $row['net'] < 0])><x-ui.money :amount="$row['net']" /></td></tr>
                             @empty
                                 <tr><td colspan="5" class="py-6 text-center text-gray-500">No module contribution data.</td></tr>
                             @endforelse
@@ -74,7 +75,7 @@
                 <h3 class="text-lg font-bold text-gray-900">Expense Category Pressure</h3>
                 <div class="mt-4 space-y-3">
                     @forelse ($expenseCategories as $category)
-                        <div class="flex items-center justify-between rounded-lg border border-slate-200 p-3"><span class="font-semibold">{{ $category->category?->name ?? 'Uncategorized' }}</span><strong>{{ number_format($category->total_amount, 2) }}</strong></div>
+                        <div class="flex items-center justify-between rounded-lg border border-slate-200 p-3"><span class="font-semibold">{{ $category->category?->name ?? 'Uncategorized' }}</span><strong><x-ui.money :amount="$category->total_amount" /></strong></div>
                     @empty
                         <p class="text-sm text-gray-500">No expense category data.</p>
                     @endforelse
@@ -84,7 +85,7 @@
                 <h3 class="text-lg font-bold text-gray-900">Production Cost by Branch</h3>
                 <div class="mt-4 space-y-3">
                     @forelse ($productionByBranch as $branch)
-                        <div class="flex items-center justify-between rounded-lg border border-slate-200 p-3"><span class="font-semibold">{{ $branch->branch?->name ?? 'Branch' }}</span><strong>{{ number_format($branch->total_amount, 2) }}</strong></div>
+                        <div class="flex items-center justify-between rounded-lg border border-slate-200 p-3"><span class="font-semibold">{{ $branch->branch?->name ?? 'Branch' }}</span><strong><x-ui.money :amount="$branch->total_amount" /></strong></div>
                     @empty
                         <p class="text-sm text-gray-500">No production cost data.</p>
                     @endforelse

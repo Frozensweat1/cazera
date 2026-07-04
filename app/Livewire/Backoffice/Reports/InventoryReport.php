@@ -4,6 +4,7 @@ namespace App\Livewire\Backoffice\Reports;
 
 use App\Livewire\Concerns\HasBranchScope;
 use App\Models\InventoryItem;
+use App\Support\AccountingMetrics;
 use Livewire\Component;
 
 class InventoryReport extends Component
@@ -24,30 +25,39 @@ class InventoryReport extends Component
         $totalItems = (clone $inventory)->count();
         $activeItems = (clone $inventory)->where('is_active', true)->count();
         $inactiveItems = max(0, $totalItems - $activeItems);
-        $inventoryValue = (clone $inventory)
-            ->selectRaw('sum(quantity_on_hand * unit_cost) as value')
-            ->value('value') ?: 0;
-        $stockoutCount = (clone $inventory)->where('quantity_on_hand', '<=', 0)->count();
-        $lowStockCount = (clone $inventory)->whereColumn('quantity_on_hand', '<=', 'reorder_level')->count();
+        $inventoryValue = AccountingMetrics::inventoryHoldingsAtSellingPrice($inventory);
+        $trackableInventory = (clone $inventory)
+            ->where('is_trackable', true)
+            ->where('is_active', true);
+        $stockoutCount = (clone $trackableInventory)->where('quantity_on_hand', '<=', 0)->count();
+        $lowStockCount = (clone $trackableInventory)->whereColumn('quantity_on_hand', '<=', 'reorder_level')->count();
         $reorderExposure = (clone $inventory)
+            ->where('is_trackable', true)
+            ->where('is_active', true)
             ->whereColumn('quantity_on_hand', '<=', 'reorder_level')
             ->selectRaw('sum(GREATEST(reorder_level - quantity_on_hand, 0) * unit_cost) as value')
             ->value('value') ?: 0;
 
         $lowStockItems = (clone $inventory)
+            ->where('is_trackable', true)
+            ->where('is_active', true)
             ->whereColumn('quantity_on_hand', '<=', 'reorder_level')
             ->orderByRaw('(reorder_level - quantity_on_hand) desc')
             ->take(8)
             ->get();
 
         $highValueItems = (clone $inventory)
-            ->selectRaw('*, (quantity_on_hand * unit_cost) as stock_value')
+            ->where('is_trackable', true)
+            ->where('is_active', true)
+            ->selectRaw('*, (quantity_on_hand * COALESCE(unit_price, 0)) as stock_value')
             ->orderByDesc('stock_value')
             ->take(8)
             ->get();
 
         $topSuppliers = (clone $inventory)
-            ->selectRaw('supplier_id, count(*) as item_count, sum(quantity_on_hand * unit_cost) as stock_value')
+            ->where('is_trackable', true)
+            ->where('is_active', true)
+            ->selectRaw('supplier_id, count(*) as item_count, sum(quantity_on_hand * COALESCE(unit_price, 0)) as stock_value')
             ->with('supplier')
             ->groupBy('supplier_id')
             ->orderByDesc('stock_value')
@@ -55,8 +65,10 @@ class InventoryReport extends Component
             ->get();
 
         $valueByCategory = (clone $inventory)
+            ->where('inventory_items.is_trackable', true)
+            ->where('inventory_items.is_active', true)
             ->join('inventory_categories', 'inventory_items.category_id', '=', 'inventory_categories.id')
-            ->selectRaw('inventory_categories.id as category_id, inventory_categories.name as category_name, sum(quantity_on_hand * unit_cost) as category_value')
+            ->selectRaw('inventory_categories.id as category_id, inventory_categories.name as category_name, sum(quantity_on_hand * COALESCE(unit_price, 0)) as category_value')
             ->groupBy('inventory_categories.id', 'inventory_categories.name')
             ->orderByDesc('category_value')
             ->take(6)

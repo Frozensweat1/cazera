@@ -155,12 +155,15 @@
                             @if (auth()->user()?->isSuperAdmin())
                                 <li><a href="{{ route('backoffice.branches') }}" @class(['active' => request()->routeIs('backoffice.branches')])>Branch Management</a></li>
                             @endif
+                            <li><a href="{{ route('backoffice.tables') }}" @class(['active' => request()->routeIs('backoffice.tables')])>Tables</a></li>
                             <li><a href="{{ route('backoffice.modules') }}" @class(['active' => request()->routeIs('backoffice.modules')])>Manage Modules</a></li>
                             <li><a href="{{ route('backoffice.users') }}" @class(['active' => request()->routeIs('backoffice.users')])>Users</a></li>
                             <li><a href="{{ route('backoffice.staff') }}" @class(['active' => request()->routeIs('backoffice.staff')])>Staff Details</a></li>
                             <li><a href="{{ route('backoffice.module-staff') }}" @class(['active' => request()->routeIs('backoffice.module-staff')])>Assign Modules</a></li>
                             @if (auth()->user()?->isSuperAdmin())
                                 <li><a href="{{ route('backoffice.branch-staff') }}" @class(['active' => request()->routeIs('backoffice.branch-staff')])>Assign Branches</a></li>
+                                 <li><a href="{{ route('backoffice.pos.taxes') }}" @class(['active' => request()->routeIs('backoffice.pos.taxes')])>Taxes</a></li>
+                                <li><a href="{{ route('backoffice.pos.discounts') }}" @class(['active' => request()->routeIs('backoffice.pos.discounts')])>Discounts</a></li>
                                 <li><a href="{{ route('backoffice.roles') }}" @class(['active' => request()->routeIs('backoffice.roles')])>Roles</a></li>
                                 <li><a href="{{ route('backoffice.permissions') }}" @class(['active' => request()->routeIs('backoffice.permissions')])>Permissions</a></li>
                             @endif
@@ -381,8 +384,6 @@
                                 <li><a href="{{ route('backoffice.pos.refunds') }}" @class(['active' => request()->routeIs('backoffice.pos.refunds')])>Refunds &amp; Returns</a></li>
                                 <li><a href="{{ route('backoffice.pos.debtors') }}" @class(['active' => request()->routeIs('backoffice.pos.debtors')])>Debtors</a></li>
                                 <li><a href="{{ route('backoffice.pos.split-payments') }}" @class(['active' => request()->routeIs('backoffice.pos.split-payments')])>Split Payments</a></li>
-                                <li><a href="{{ route('backoffice.pos.taxes') }}" @class(['active' => request()->routeIs('backoffice.pos.taxes')])>Taxes</a></li>
-                                <li><a href="{{ route('backoffice.pos.discounts') }}" @class(['active' => request()->routeIs('backoffice.pos.discounts')])>Discounts</a></li>
                             </ul>
                         </li>
                     @endif

@@ -51,6 +51,7 @@ use App\Livewire\Backoffice\Website\PagesIndex as WebsitePagesIndex;
 use App\Livewire\Backoffice\Website\ReviewsIndex;
 use App\Livewire\Backoffice\Website\SettingsIndex;
 use App\Livewire\Backoffice\Website\TestimonialsIndex;
+use App\Livewire\Backoffice\Tables\Index as BackofficeTablesIndex;
 use App\Livewire\Backoffice\Maintenance\RequestsIndex as MaintenanceRequestsIndex;
 use App\Livewire\Backoffice\Reports\Index as ReportsIndex;
 use App\Livewire\Backoffice\Reports\SalesReport;
@@ -167,6 +168,9 @@ Route::get('categories', CategoriesIndex::class)
 Route::get('menu-items', MenuItemsIndex::class)
     ->middleware('role:Super Admin|Branch Manager')
     ->name('backoffice.menu-items');
+Route::get('tables', BackofficeTablesIndex::class)
+    ->middleware('role:Super Admin|Branch Manager')
+    ->name('backoffice.tables');
 Route::get('menu-item-adjustments', MenuItemAdjustmentsIndex::class)
     ->middleware('role:Super Admin|Branch Manager')
     ->name('backoffice.menu-item-adjustments');

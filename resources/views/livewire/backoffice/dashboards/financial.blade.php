@@ -59,7 +59,7 @@
             <div class="rounded-xl bg-dark p-5 !text-white shadow-sm">
                 <p class="text-sm font-semibold uppercase tracking-wide !text-white opacity-80">Total Holdings</p>
                 <p class="mt-4 text-3xl font-bold">GHS {{ number_format($totalHoldings, 2) }}</p>
-                <p class="mt-2 text-sm !text-white opacity-80">Inventory + trackable menu stock + net profit.</p>
+                <p class="mt-2 text-sm !text-white opacity-80">Registers + unsold trackable stock at selling value.</p>
             </div>
         </div>
 
@@ -88,14 +88,14 @@
             <div class="panel border-l-4 border-indigo-500 p-5">
                 <p class="text-sm font-semibold uppercase tracking-wide text-slate-400">Trackable Menu Value</p>
                 <p class="mt-3 text-2xl font-semibold text-slate-900 dark:text-white-light">GHS {{ number_format($trackableMenuItemValue, 2) }}</p>
-                <p class="mt-1 text-xs text-slate-500">Quantity on hand at cost.</p>
+                <p class="mt-1 text-xs text-slate-500">Quantity on hand at selling price.</p>
             </div>
         </div>
 
         <div class="grid gap-6 xl:grid-cols-2">
             <div class="panel">
                 <div class="mb-5 flex items-center justify-between">
-                    <h5 class="text-lg font-semibold dark:text-white-light">Revenue vs Expenses</h5>
+                    <h5 class="text-lg font-semibold dark:text-white-light">Revenue vs Operating Costs</h5>
                     <span class="text-sm text-slate-500">Selected period</span>
                 </div>
                 <div wire:ignore>

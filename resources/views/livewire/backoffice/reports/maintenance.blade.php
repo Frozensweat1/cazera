@@ -46,9 +46,9 @@
             <div class="panel">
                 <h3 class="text-lg font-bold text-gray-900">Cost Control</h3>
                 <div class="mt-4 space-y-3">
-                    <div class="flex justify-between rounded-lg bg-slate-50 p-3"><span>Estimated</span><strong>{{ number_format($estimatedCost, 2) }}</strong></div>
-                    <div class="flex justify-between rounded-lg bg-slate-50 p-3"><span>Actual</span><strong>{{ number_format($actualCost, 2) }}</strong></div>
-                    <div class="flex justify-between rounded-lg bg-slate-50 p-3"><span>Variance</span><strong @class(['text-emerald-700' => $costVariance <= 0, 'text-red-700' => $costVariance > 0])>{{ number_format($costVariance, 2) }}</strong></div>
+                    <div class="flex justify-between rounded-lg bg-slate-50 p-3"><span>Estimated</span><strong><x-ui.money :amount="$estimatedCost" /></strong></div>
+                    <div class="flex justify-between rounded-lg bg-slate-50 p-3"><span>Actual</span><strong><x-ui.money :amount="$actualCost" /></strong></div>
+                    <div class="flex justify-between rounded-lg bg-slate-50 p-3"><span>Variance</span><strong @class(['text-emerald-700' => $costVariance <= 0, 'text-red-700' => $costVariance > 0])><x-ui.money :amount="$costVariance" /></strong></div>
                 </div>
             </div>
             <div class="panel">
@@ -71,7 +71,7 @@
                 <h3 class="text-lg font-bold text-gray-900">Modules by Maintenance Load</h3>
                 <div class="mt-4 space-y-3">
                     @forelse ($topModules as $module)
-                        <div class="flex items-center justify-between rounded-lg border border-slate-200 p-3"><div><p class="font-semibold">{{ $module->module?->name ?? 'No module' }}</p><p class="text-xs text-gray-500">Requests {{ number_format($module->total_requests) }}</p></div><strong>{{ number_format($module->total_cost, 2) }}</strong></div>
+                        <div class="flex items-center justify-between rounded-lg border border-slate-200 p-3"><div><p class="font-semibold">{{ $module->module?->name ?? 'No module' }}</p><p class="text-xs text-gray-500">Requests {{ number_format($module->total_requests) }}</p></div><strong><x-ui.money :amount="$module->total_cost" /></strong></div>
                     @empty
                         <p class="text-sm text-gray-500">No module maintenance summary.</p>
                     @endforelse

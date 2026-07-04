@@ -6,8 +6,14 @@ use App\Livewire\Concerns\HasBranchScope;
 use App\Models\CashRegisterTransaction;
 use App\Models\DailyProductionCost;
 use App\Models\Expense;
+use App\Models\MaintenanceRequest;
+use App\Models\Module;
 use App\Models\Sale;
+use App\Models\SaleItem;
+use App\Support\AccountingMetrics;
+use App\Support\SaleModuleAllocation;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Livewire\Component;
 
 class Index extends Component
@@ -33,9 +39,9 @@ class Index extends Component
 
         $salesQuery = Sale::accessible()
             ->with(['branch', 'module'])
-            ->where('status', '!=', 'cancelled')
+            ->whereNotIn('status', ['cancelled', 'refunded'])
             ->when($branchId, fn ($query) => $query->where('branch_id', $branchId))
-            ->when($this->filterModule, fn ($query) => $query->where('module_id', $this->filterModule))
+            ->forModule($this->filterModule)
             ->whereBetween('sale_date', [$startDate, $endDate]);
 
         $productionQuery = DailyProductionCost::accessible()
@@ -50,6 +56,12 @@ class Index extends Component
             ->when($this->filterModule, fn ($query) => $query->where('module_id', $this->filterModule))
             ->whereBetween('expense_date', [$startDate->toDateString(), $endDate->toDateString()]);
 
+        $maintenanceQuery = MaintenanceRequest::accessible()
+            ->with(['branch', 'module'])
+            ->when($branchId, fn ($query) => $query->where('branch_id', $branchId))
+            ->when($this->filterModule, fn ($query) => $query->where('module_id', $this->filterModule))
+            ->whereBetween('requested_date', [$startDate, $endDate]);
+
         $refunds = CashRegisterTransaction::accessible()
             ->when($branchId, fn ($query) => $query->where('branch_id', $branchId))
             ->when($this->filterModule, fn ($query) => $query->where('module_id', $this->filterModule))
@@ -57,39 +69,83 @@ class Index extends Component
             ->whereBetween('transaction_date', [$startDate, $endDate])
             ->sum('amount');
 
-        $salesCollected = (float) (clone $salesQuery)->sum('paid_amount');
-        $grossSales = (float) (clone $salesQuery)->sum('total');
+        $salesCollected = SaleModuleAllocation::sum($salesQuery, 'paid_amount', $this->filterModule);
+        $grossSales = SaleModuleAllocation::sum($salesQuery, 'total', $this->filterModule);
         $productionCosts = (float) (clone $productionQuery)->sum('amount');
         $expenses = (float) (clone $expenseQuery)->sum('amount');
-        $netRevenue = $salesCollected - $productionCosts - $expenses;
+        $maintenanceCosts = (float) (clone $maintenanceQuery)->sum(DB::raw('COALESCE(actual_cost, estimated_cost, 0)'));
+        $trackableItemCosts = AccountingMetrics::soldTrackableMenuItemCost(
+            SaleItem::accessible()
+                ->when($branchId, fn ($query) => $query->where('sale_items.branch_id', $branchId))
+                ->when($this->filterModule, fn ($query) => $query->where('sale_items.module_id', $this->filterModule)),
+            $startDate,
+            $endDate
+        );
+        $netRevenue = $salesCollected - $trackableItemCosts - $productionCosts - $maintenanceCosts - $expenses;
 
-        $branchBreakdown = (clone $salesQuery)
-            ->selectRaw('branch_id, module_id, SUM(paid_amount) as paid_total, SUM(total) as gross_total')
+        $productionByBranchModule = (clone $productionQuery)
+            ->selectRaw('branch_id, module_id, sum(amount) as total_amount')
             ->groupBy('branch_id', 'module_id')
-            ->with(['branch', 'module'])
             ->get()
-            ->map(function (Sale $sale) use ($startDate, $endDate) {
-                $production = DailyProductionCost::accessible()
-                    ->where('branch_id', $sale->branch_id)
-                    ->where('module_id', $sale->module_id)
-                    ->whereBetween('production_date', [$startDate->toDateString(), $endDate->toDateString()])
-                    ->sum('amount');
+            ->keyBy(fn ($row) => $row->branch_id . ':' . $row->module_id);
+        $expensesByBranchModule = (clone $expenseQuery)
+            ->selectRaw('branch_id, module_id, sum(amount) as total_amount')
+            ->groupBy('branch_id', 'module_id')
+            ->get()
+            ->keyBy(fn ($row) => $row->branch_id . ':' . $row->module_id);
+        $maintenanceByBranchModule = (clone $maintenanceQuery)
+            ->selectRaw('branch_id, module_id, sum(COALESCE(actual_cost, estimated_cost, 0)) as total_amount')
+            ->groupBy('branch_id', 'module_id')
+            ->get()
+            ->keyBy(fn ($row) => $row->branch_id . ':' . $row->module_id);
+        $itemCostByBranchModule = SaleItem::accessible()
+            ->when($branchId, fn ($query) => $query->where('sale_items.branch_id', $branchId))
+            ->when($this->filterModule, fn ($query) => $query->where('sale_items.module_id', $this->filterModule))
+            ->join('sales', 'sale_items.sale_id', '=', 'sales.id')
+            ->join('menu_items', 'sale_items.menu_item_id', '=', 'menu_items.id')
+            ->whereBetween('sales.sale_date', [$startDate, $endDate])
+            ->whereNotIn('sales.status', ['cancelled', 'refunded'])
+            ->where('menu_items.is_trackable', true)
+            ->selectRaw('sale_items.branch_id, sale_items.module_id, sum(sale_items.qty * COALESCE(menu_items.cost_price, 0)) as total_amount')
+            ->groupBy('sale_items.branch_id', 'sale_items.module_id')
+            ->get()
+            ->keyBy(fn ($row) => $row->branch_id . ':' . $row->module_id);
 
-                $expense = Expense::accessible()
-                    ->where('branch_id', $sale->branch_id)
-                    ->where('module_id', $sale->module_id)
-                    ->whereBetween('expense_date', [$startDate->toDateString(), $endDate->toDateString()])
-                    ->sum('amount');
+        $salesForBreakdown = (clone $salesQuery)->with(['branch', 'items'])->get();
+        $modules = Module::query()
+            ->whereIn('id', $salesForBreakdown->flatMap->items->pluck('module_id')->filter()->unique())
+            ->get()
+            ->keyBy('id');
 
-                $paid = (float) $sale->paid_total;
+        $branchBreakdown = $salesForBreakdown
+            ->flatMap(function (Sale $sale) {
+                return $sale->moduleBreakdownForAmount((float) $sale->paid_amount, $sale->items)
+                    ->map(fn ($paid, $moduleId) => (object) [
+                        'branch_id' => $sale->branch_id,
+                        'branch' => $sale->branch,
+                        'module_id' => (int) $moduleId,
+                        'paid_total' => (float) $paid,
+                    ]);
+            })
+            ->groupBy(fn ($row) => $row->branch_id . ':' . $row->module_id)
+            ->map(function ($rows) use ($modules, $productionByBranchModule, $expensesByBranchModule, $maintenanceByBranchModule, $itemCostByBranchModule) {
+                $row = $rows->first();
+                $key = $row->branch_id . ':' . $row->module_id;
+                $itemCost = (float) ($itemCostByBranchModule->get($key)->total_amount ?? 0);
+                $production = (float) ($productionByBranchModule->get($key)->total_amount ?? 0);
+                $maintenance = (float) ($maintenanceByBranchModule->get($key)->total_amount ?? 0);
+                $expense = (float) ($expensesByBranchModule->get($key)->total_amount ?? 0);
+                $paid = (float) $rows->sum('paid_total');
 
                 return [
-                    'branch' => $sale->branch?->name ?? 'Unknown',
-                    'module' => $sale->module?->name ?? 'No module',
+                    'branch' => $row->branch?->name ?? 'Unknown',
+                    'module' => $modules->get($row->module_id)?->name ?? 'No module',
                     'paid' => $paid,
-                    'production' => (float) $production,
-                    'expenses' => (float) $expense,
-                    'net' => $paid - (float) $production - (float) $expense,
+                    'item_cost' => $itemCost,
+                    'production' => $production,
+                    'maintenance' => $maintenance,
+                    'expenses' => $expense,
+                    'net' => $paid - $itemCost - $production - $maintenance - $expense,
                 ];
             })
             ->sortByDesc('net')
@@ -102,7 +158,9 @@ class Index extends Component
                 'gross_sales' => $grossSales,
                 'sales_collected' => $salesCollected,
                 'refunds' => abs((float) $refunds),
+                'trackable_item_costs' => $trackableItemCosts,
                 'production_costs' => $productionCosts,
+                'maintenance_costs' => $maintenanceCosts,
                 'expenses' => $expenses,
                 'net_revenue' => $netRevenue,
                 'margin' => $salesCollected > 0 ? round(($netRevenue / $salesCollected) * 100, 2) : 0,

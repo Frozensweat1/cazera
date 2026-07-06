@@ -233,12 +233,9 @@
 
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
 
-                    <!-- MODULE -->
-                    <x-ui.select label="Module" name="module_id" wire:model="module_id" :disabled="! $branch_id">
-
-                        <option value="">
-                            {{ $branch_id ? 'Select Module' : 'Select branch first' }}
-                        </option>
+                    <!-- MODULES -->
+                    <x-ui.select label="Modules" name="module_ids" wire:model="module_ids" :disabled="! $branch_id" multiple
+                        class="form-select w-full min-h-36">
 
                         @foreach ($formModules as $module)
                             <option value="{{ $module->id }}">
@@ -247,6 +244,12 @@
                         @endforeach
 
                     </x-ui.select>
+                    <p class="mt-1 text-xs text-gray-500">
+                        {{ $branch_id ? 'Hold Ctrl or Cmd to select more than one module.' : 'Select a branch first to load modules.' }}
+                    </p>
+                    @error('module_ids.*')
+                        <span class="text-danger text-sm">{{ $message }}</span>
+                    @enderror
 
                 </div>
 

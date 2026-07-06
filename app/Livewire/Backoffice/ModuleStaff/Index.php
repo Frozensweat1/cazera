@@ -7,6 +7,7 @@ use App\Models\BranchStaff;
 use App\Models\Module;
 use App\Models\ModuleStaff;
 use App\Models\User;
+use Illuminate\Support\Facades\DB;
 use Livewire\Component;
 use Livewire\WithPagination;
 use Jantinnerezo\LivewireAlert\Facades\LivewireAlert;
@@ -21,7 +22,7 @@ class Index extends Component
     public $user_id;
     public $branch_id;
 
-    public $module_id;
+    public array $module_ids = [];
 
     public $is_active = true;
 
@@ -39,7 +40,8 @@ class Index extends Component
             'user_id' => 'required|exists:users,id',
             'branch_id' => 'required|exists:branches,id',
 
-            'module_id' => 'required|exists:modules,id',
+            'module_ids' => 'required|array|min:1',
+            'module_ids.*' => 'integer|exists:modules,id',
 
             'is_active' => 'boolean',
         ];
@@ -93,7 +95,7 @@ class Index extends Component
     public function updatedBranchId(): void
     {
         $this->user_id = null;
-        $this->module_id = null;
+        $this->module_ids = [];
     }
 
     public function resetForm()
@@ -102,7 +104,7 @@ class Index extends Component
             'assignmentId',
             'user_id',
             'branch_id',
-            'module_id',
+            'module_ids',
         ]);
 
         $this->is_active = true;
@@ -125,7 +127,7 @@ class Index extends Component
         $this->user_id = $assignment->user_id;
         $this->branch_id = $assignment->branch_id;
 
-        $this->module_id = $assignment->module_id;
+        $this->module_ids = [(int) $assignment->module_id];
 
         $this->is_active = $assignment->is_active;
 
@@ -136,9 +138,31 @@ class Index extends Component
     {
         $this->validate();
         $this->authorizeBranch($this->branch_id);
-        $this->authorizeModule($this->module_id, $this->branch_id);
 
-        $module = Module::findOrFail($this->module_id);
+        $moduleIds = collect($this->module_ids)
+            ->filter()
+            ->map(fn ($moduleId) => (int) $moduleId)
+            ->unique()
+            ->values();
+
+        if ($moduleIds->isEmpty()) {
+            $this->addError('module_ids', 'Please select at least one module.');
+            return;
+        }
+
+        $modules = Module::query()
+            ->whereIn('id', $moduleIds)
+            ->get();
+
+        if ($modules->count() !== $moduleIds->count()) {
+            $this->addError('module_ids', 'One or more selected modules could not be found.');
+            return;
+        }
+
+        foreach ($moduleIds as $moduleId) {
+            $this->authorizeModule($moduleId, $this->branch_id);
+        }
+
         $selectedUser = User::with('roles')->findOrFail($this->user_id);
 
         if ($selectedUser->isSuperAdmin()) {
@@ -151,8 +175,8 @@ class Index extends Component
             return;
         }
 
-        if ((int) $module->branch_id !== (int) $this->branch_id) {
-            $this->addError('module_id', 'The selected module does not belong to the selected branch.');
+        if ($modules->contains(fn ($module) => (int) $module->branch_id !== (int) $this->branch_id)) {
+            $this->addError('module_ids', 'All selected modules must belong to the selected branch.');
             return;
         }
 
@@ -173,40 +197,77 @@ class Index extends Component
             return;
         }
 
-        if (! $hasBranchAssignment) {
-            BranchStaff::updateOrCreate(
-                [
-                    'user_id' => $this->user_id,
-                    'branch_id' => $this->branch_id,
-                ],
-                [
-                    'assigned_by' => auth()->id(),
-                    'assigned_at' => now(),
-                    'is_active' => true,
-                ]
-            );
+        try {
+            DB::transaction(function () use ($hasBranchAssignment, $moduleIds) {
+                if (! $hasBranchAssignment) {
+                    BranchStaff::updateOrCreate(
+                        [
+                            'user_id' => $this->user_id,
+                            'branch_id' => $this->branch_id,
+                        ],
+                        [
+                            'assigned_by' => auth()->id(),
+                            'assigned_at' => now(),
+                            'is_active' => true,
+                        ]
+                    );
+                }
+
+                $currentAssignment = $this->assignmentId
+                    ? ModuleStaff::find($this->assignmentId)
+                    : null;
+
+                foreach ($moduleIds as $index => $moduleId) {
+                    $payload = [
+                        'user_id' => $this->user_id,
+                        'branch_id' => $this->branch_id,
+                        'module_id' => $moduleId,
+                        'assigned_by' => auth()->id(),
+                        'assigned_at' => now(),
+                        'is_active' => $this->is_active,
+                    ];
+
+                    if ($currentAssignment && $index === 0) {
+                        $duplicate = ModuleStaff::query()
+                            ->where('user_id', $this->user_id)
+                            ->where('module_id', $moduleId)
+                            ->whereKeyNot($currentAssignment->id)
+                            ->first();
+
+                        if ($duplicate) {
+                            $duplicate->update($payload);
+                            $currentAssignment->delete();
+                        } else {
+                            $currentAssignment->update($payload);
+                        }
+
+                        continue;
+                    }
+
+                    ModuleStaff::updateOrCreate(
+                        [
+                            'user_id' => $this->user_id,
+                            'module_id' => $moduleId,
+                        ],
+                        $payload
+                    );
+                }
+            });
+        } catch (\Throwable $exception) {
+            report($exception);
+
+            LivewireAlert::title('Error')
+                ->text('The module assignments could not be saved. Please try again.')
+                ->error()
+                ->show();
+
+            return;
         }
-
-        ModuleStaff::updateOrCreate(
-            $this->assignmentId
-                ? ['id' => $this->assignmentId]
-                : ['user_id' => $this->user_id, 'module_id' => $this->module_id],
-            [
-                'user_id' => $this->user_id,
-                'branch_id' => $this->branch_id,
-
-                'module_id' => $this->module_id,
-
-                'assigned_by' => auth()->id(),
-
-                'is_active' => $this->is_active,
-            ]
-        );
 
         $this->dispatch('close-modal', 'module-staff-form');
 
         LivewireAlert::title('Assignment Saved')
-            ->text('Module staff assignment saved successfully.')
+            ->text($moduleIds->count() . ' module assignment' . ($moduleIds->count() === 1 ? '' : 's') . ' saved successfully.')
             ->success()
             ->show();
 

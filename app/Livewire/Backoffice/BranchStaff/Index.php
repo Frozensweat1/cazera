@@ -5,6 +5,7 @@ namespace App\Livewire\Backoffice\BranchStaff;
 use App\Livewire\Concerns\HasBranchScope;
 use App\Models\BranchStaff;
 use App\Models\User;
+use Illuminate\Support\Facades\DB;
 use Livewire\Component;
 use Livewire\WithPagination;
 use Jantinnerezo\LivewireAlert\Facades\LivewireAlert;
@@ -16,7 +17,7 @@ class Index extends Component
 
     public $assignmentId;
     public $user_id;
-    public $branch_id;
+    public array $branch_ids = [];
     public $is_active = true;
     public $search = '';
     public $filterBranch = '';
@@ -26,7 +27,8 @@ class Index extends Component
     {
         return [
             'user_id' => 'required|exists:users,id',
-            'branch_id' => 'required|exists:branches,id',
+            'branch_ids' => 'required|array|min:1',
+            'branch_ids.*' => 'integer|exists:branches,id',
             'is_active' => 'boolean',
         ];
     }
@@ -56,14 +58,9 @@ class Index extends Component
                 ->latest()
                 ->paginate(10),
 
-            'formUsers' => $this->eligibleUsersForSelectedBranch(),
+            'formUsers' => $this->eligibleUsersForAssignment(),
             'branches' => $this->accessibleBranches(),
         ]);
-    }
-
-    public function updatedBranchId(): void
-    {
-        $this->user_id = null;
     }
 
     public function resetForm()
@@ -71,7 +68,7 @@ class Index extends Component
         $this->reset([
             'assignmentId',
             'user_id',
-            'branch_id',
+            'branch_ids',
         ]);
         $this->is_active = true;
     }
@@ -88,7 +85,7 @@ class Index extends Component
         $this->authorizeBranch($assignment->branch_id);
         $this->assignmentId = $assignment->id;
         $this->user_id = $assignment->user_id;
-        $this->branch_id = $assignment->branch_id;
+        $this->branch_ids = [(int) $assignment->branch_id];
         $this->is_active = $assignment->is_active;
 
         $this->dispatch('open-modal', 'branch-staff-form');
@@ -97,7 +94,21 @@ class Index extends Component
     public function save()
     {
         $this->validate();
-        $this->authorizeBranch($this->branch_id);
+
+        $branchIds = collect($this->branch_ids)
+            ->filter()
+            ->map(fn ($branchId) => (int) $branchId)
+            ->unique()
+            ->values();
+
+        if ($branchIds->isEmpty()) {
+            $this->addError('branch_ids', 'Please select at least one branch.');
+            return;
+        }
+
+        foreach ($branchIds as $branchId) {
+            $this->authorizeBranch($branchId);
+        }
 
         $selectedUser = User::with('roles')->findOrFail($this->user_id);
 
@@ -111,23 +122,62 @@ class Index extends Component
             return;
         }
 
-        BranchStaff::updateOrCreate(
-            $this->assignmentId
-                ? ['id' => $this->assignmentId]
-                : ['user_id' => $this->user_id, 'branch_id' => $this->branch_id],
-            [
-                'user_id' => $this->user_id,
-                'branch_id' => $this->branch_id,
-                'assigned_by' => auth()->id(),
-                'is_active' => $this->is_active,
-                'assigned_at' => now(),
-            ]
-        );
+        try {
+            DB::transaction(function () use ($branchIds) {
+                $currentAssignment = $this->assignmentId
+                    ? BranchStaff::find($this->assignmentId)
+                    : null;
+
+                foreach ($branchIds as $index => $branchId) {
+                    $payload = [
+                        'user_id' => $this->user_id,
+                        'branch_id' => $branchId,
+                        'assigned_by' => auth()->id(),
+                        'is_active' => $this->is_active,
+                        'assigned_at' => now(),
+                    ];
+
+                    if ($currentAssignment && $index === 0) {
+                        $duplicate = BranchStaff::query()
+                            ->where('user_id', $this->user_id)
+                            ->where('branch_id', $branchId)
+                            ->whereKeyNot($currentAssignment->id)
+                            ->first();
+
+                        if ($duplicate) {
+                            $duplicate->update($payload);
+                            $currentAssignment->delete();
+                        } else {
+                            $currentAssignment->update($payload);
+                        }
+
+                        continue;
+                    }
+
+                    BranchStaff::updateOrCreate(
+                        [
+                            'user_id' => $this->user_id,
+                            'branch_id' => $branchId,
+                        ],
+                        $payload
+                    );
+                }
+            });
+        } catch (\Throwable $exception) {
+            report($exception);
+
+            LivewireAlert::title('Error')
+                ->text('The branch assignments could not be saved. Please try again.')
+                ->error()
+                ->show();
+
+            return;
+        }
 
         $this->dispatch('close-modal', 'branch-staff-form');
 
         LivewireAlert::title('Assignment Saved')
-            ->text('Branch staff assignment saved successfully.')
+            ->text($branchIds->count() . ' branch assignment' . ($branchIds->count() === 1 ? '' : 's') . ' saved successfully.')
             ->success()
             ->show();
 
@@ -186,28 +236,13 @@ class Index extends Component
             ->show();
     }
 
-    protected function eligibleUsersForSelectedBranch()
+    protected function eligibleUsersForAssignment()
     {
-        if (! $this->branch_id) {
-            return collect();
-        }
-
-        $this->authorizeBranch($this->branch_id);
-
         return User::query()
             ->with('roles')
             ->whereDoesntHave('roles', fn ($query) => $query->where('name', 'Super Admin'))
             ->when(! auth()->user()?->isSuperAdmin(), fn ($query) => $query
                 ->whereDoesntHave('roles', fn ($roleQuery) => $roleQuery->where('name', 'Branch Manager')))
-            ->where(function ($query) {
-                $query->whereDoesntHave('branchAssignments', fn ($branchQuery) => $branchQuery
-                    ->where('branch_id', $this->branch_id)
-                    ->where('is_active', true));
-
-                if ($this->assignmentId && $this->user_id) {
-                    $query->orWhere('id', $this->user_id);
-                }
-            })
             ->orderBy('name')
             ->get();
     }

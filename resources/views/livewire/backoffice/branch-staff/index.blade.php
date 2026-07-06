@@ -113,32 +113,30 @@
     <x-ui.modal name="branch-staff-form" maxWidth="md">
 
         <x-slot:title>
-            {{ $assignmentId ? 'Edit' : 'New' }} Branch Assignment
+            {{ $assignmentId ? 'Edit' : 'New' }} Branch Assignment{{ $assignmentId ? '' : 's' }}
         </x-slot:title>
 
         <div class="space-y-4">
             <div>
-                <label class="block text-sm font-medium text-gray-700">Branch</label>
-                <x-ui.select name="branch_id" wire:model.live="branch_id">
-                    <option value="">Select a branch</option>
-                    @foreach($branches as $branch)
-                        <option value="{{ $branch->id }}">{{ $branch->name }}</option>
-                    @endforeach
-                </x-ui.select>
-                @error('branch_id') <span class="text-red-500 text-xs">{{ $message }}</span> @enderror
-            </div>
-
-            <div>
-                <label class="block text-sm font-medium text-gray-700">Staff Member</label>
-                <x-ui.select name="user_id" wire:model="user_id" :disabled="! $branch_id">
-                    <option value="">
-                        {{ $branch_id ? 'Select a user' : 'Select branch first' }}
-                    </option>
+                <x-ui.select label="Staff Member" name="user_id" wire:model="user_id">
+                    <option value="">Select a user</option>
                     @foreach($formUsers as $user)
                         <option value="{{ $user->id }}">{{ $user->name }} ({{ $user->email }})</option>
                     @endforeach
                 </x-ui.select>
-                @error('user_id') <span class="text-red-500 text-xs">{{ $message }}</span> @enderror
+            </div>
+
+            <div>
+                <x-ui.select label="Branches" name="branch_ids" wire:model="branch_ids" multiple
+                    class="form-select w-full min-h-36">
+                    @foreach($branches as $branch)
+                        <option value="{{ $branch->id }}">{{ $branch->name }}</option>
+                    @endforeach
+                </x-ui.select>
+                <p class="mt-1 text-xs text-gray-500">Hold Ctrl or Cmd to select more than one branch.</p>
+                @error('branch_ids.*')
+                    <span class="text-red-500 text-xs">{{ $message }}</span>
+                @enderror
             </div>
 
             <x-ui.checkbox label="Active Status" name="is_active" wire:model="is_active" />

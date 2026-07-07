@@ -90,7 +90,7 @@
                                                 @php
                                                     $imageUrl = $this->menuItemImageUrl($item);
                                                 @endphp
-                                                <div class="panel flex gap-4 p-4">
+                                                <div class="panel flex gap-4 p-4" wire:key="pos-menu-item-{{ $module->id }}-{{ $item->id }}">
                                                     <div
                                                         class="h-24 w-24 flex-none overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
                                                         @if ($imageUrl)
@@ -206,7 +206,7 @@
                                                     </thead>
                                                     <tbody>
                                                         @forelse ($moduleCart as $line)
-                                                            <tr class="border-b border-slate-200">
+                                                            <tr class="border-b border-slate-200" wire:key="pos-cart-line-{{ $line['module_id'] }}-{{ $line['menu_item_id'] }}">
                                                                 <td class="py-2">
                                                                     <div class="font-semibold">{{ $line['item_name'] }}</div>
                                                                     <div class="text-xs text-gray-500">{{ $line['module_name'] ?? 'Module' }}</div>
@@ -335,7 +335,7 @@
                                                         @enderror
                                                         <div class="grid gap-3">
                                                             @foreach ($splitPayments as $index => $payment)
-                                                                <div class="grid grid-cols-1 gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 md:grid-cols-[1fr_1fr_1fr_auto]">
+                                                                <div class="grid grid-cols-1 gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 md:grid-cols-[1fr_1fr_1fr_auto]" wire:key="pos-payment-row-{{ $index }}">
                                                                     <x-ui.select label="Method"
                                                                         name="splitPayments{{ $index }}Method"
                                                                         wire:model.live="splitPayments.{{ $index }}.method"
@@ -422,7 +422,7 @@
                         </thead>
                         <tbody>
                             @forelse ($lastSales as $sale)
-                                <tr>
+                                <tr wire:key="pos-today-sale-{{ $sale->id }}">
                                     <td>{{ $sale->sale_number }}</td>
                                     <td>{{ $sale->customer?->name ?? 'Walk-in' }}</td>
                                     <td>

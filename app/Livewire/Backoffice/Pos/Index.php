@@ -95,45 +95,11 @@ class Index extends Component
 
         $modules = $this->getAccessibleModules($branchId);
 
-        // menuItemsByModule becomes a map of module_id => collection, but we also build a unified list of available items across modules
-        $menuItems = collect();
-        $menuItemsUnified = collect();
-        $taxesByModule = collect();
-        $discountsByModule = collect();
-
-        foreach ($modules as $module) {
-            $search = trim((string) data_get($this->menuSearch, $module->id, ''));
-
-            $items = MenuItem::where('branch_id', $branchId)
-                ->where('module_id', $module->id)
-                ->where('status', 'available')
-                ->when($search, fn ($query) => $query->where(function ($query) use ($search) {
-                    $query->where('name', 'like', "%{$search}%")
-                        ->orWhere('description', 'like', "%{$search}%")
-                        ->orWhereHas('category', fn ($subQuery) => $subQuery->where('name', 'like', "%{$search}%"));
-                }))
-                ->orderBy('name')
-                ->get();
-
-            $menuItems[$module->id] = $items;
-            $menuItemsUnified = $menuItemsUnified->concat($items);
-
-            $taxesByModule[$module->id] = Tax::query()
-                ->where('branch_id', $branchId)
-                ->where('module_id', $module->id)
-                ->available()
-                ->orderBy('name')
-                ->get();
-
-            $discountsByModule[$module->id] = Discount::query()
-                ->where('branch_id', $branchId)
-                ->where('module_id', $module->id)
-                ->available()
-                ->orderBy('name')
-                ->get();
-        }
-
-        $menuItemsUnified = $menuItemsUnified->keyBy('id');
+        $moduleIds = $modules->pluck('id')->map(fn ($id) => (int) $id)->values();
+        $menuItems = $this->menuItemsByModule($branchId, $moduleIds);
+        $menuItemsUnified = $menuItems->flatten(1)->keyBy('id');
+        $taxesByModule = $this->taxesByModule($branchId, $moduleIds);
+        $discountsByModule = $this->discountsByModule($branchId, $moduleIds);
 
         $receiptSale = $this->receiptSaleId
             ? Sale::with(['branch', 'module', 'customer', 'creator', 'items', 'payments.receiver'])->find($this->receiptSaleId)
@@ -173,33 +139,22 @@ class Index extends Component
             'cartLines' => $cartLines,
             'orderSummary' => $orderSummary,
             'availableDiscounts' => $availableDiscounts,
-            'customers' => Customer::query()
-                ->when(trim($this->customer_search), function ($query) {
-                    $search = trim($this->customer_search);
-
-                    $query->where(function ($query) use ($search) {
-                        $query->where('name', 'like', "%{$search}%")
-                            ->orWhere('phone', 'like', "%{$search}%")
-                            ->orWhere('email', 'like', "%{$search}%");
-                    });
-                })
-                ->orderBy('name')
-                ->limit(25)
-                ->get(),
-            'lastSales' => Sale::with(['customer', 'module', 'creator', 'payments', 'latestPayment.receiver', 'table'])
+            'customers' => $this->customerOptions(),
+            'lastSales' => Sale::with(['customer:id,name', 'latestPayment.receiver:id,name', 'table:id,name,status'])
                 ->where('branch_id', $branchId)
                 ->where('status', '!=', 'refunded')
                 ->whereBetween('sale_date', [$todayStart, $todayEnd])
-                ->forModules($modules->pluck('id'))
+                ->forModules($moduleIds)
                 ->when(! $canSeeAllTodaySales, fn($query) => $query->where('created_by', auth()->id()))
                 ->latest('sale_date')
+                ->limit(30)
                 ->get(),
             'receiptSale' => $receiptSale,
             'receiptTaxes' => $this->receiptTaxBreakdown($receiptSale),
             'recentPaymentSale' => $this->recentPaymentSaleId
                 ? Sale::with(['customer', 'branch', 'module'])->accessible()->find($this->recentPaymentSaleId)
                 : null,
-            'availableTables' => $branchId
+            'availableTables' => $branchId && $this->sale_type === 'dine_in'
                 ? DiningTable::where('branch_id', $branchId)
                     ->where(function ($query) {
                         $query->where('status', 'available');
@@ -225,6 +180,114 @@ class Index extends Component
         return $this->accessibleModules($branchId, 'pos');
     }
 
+    protected function menuItemsByModule($branchId, $moduleIds)
+    {
+        $moduleIds = collect($moduleIds)->map(fn ($id) => (int) $id)->filter()->values();
+
+        if (! $branchId || $moduleIds->isEmpty()) {
+            return collect();
+        }
+
+        $searches = $moduleIds
+            ->mapWithKeys(fn ($moduleId) => [$moduleId => trim((string) data_get($this->menuSearch, $moduleId, ''))])
+            ->filter();
+        $unsearchedModuleIds = $moduleIds->diff($searches->keys()->map(fn ($id) => (int) $id))->values();
+
+        return MenuItem::query()
+            ->select([
+                'id',
+                'branch_id',
+                'module_id',
+                'category_id',
+                'name',
+                'description',
+                'price',
+                'quantity',
+                'is_trackable',
+                'image_url',
+                'status',
+            ])
+            ->where('branch_id', $branchId)
+            ->whereIn('module_id', $moduleIds)
+            ->where('status', 'available')
+            ->when($searches->isNotEmpty(), function ($query) use ($searches, $unsearchedModuleIds) {
+                $query->where(function ($query) use ($searches, $unsearchedModuleIds) {
+                    if ($unsearchedModuleIds->isNotEmpty()) {
+                        $query->orWhereIn('module_id', $unsearchedModuleIds);
+                    }
+
+                    foreach ($searches as $moduleId => $search) {
+                        $query->orWhere(function ($query) use ($moduleId, $search) {
+                            $query->where('module_id', $moduleId)
+                                ->where(function ($query) use ($search) {
+                                    $query->where('name', 'like', "%{$search}%")
+                                        ->orWhere('description', 'like', "%{$search}%")
+                                        ->orWhereHas('category', fn ($subQuery) => $subQuery->where('name', 'like', "%{$search}%"));
+                                });
+                        });
+                    }
+                });
+            })
+            ->orderBy('module_id')
+            ->orderBy('name')
+            ->get()
+            ->groupBy('module_id');
+    }
+
+    protected function taxesByModule($branchId, $moduleIds)
+    {
+        $moduleIds = collect($moduleIds)->map(fn ($id) => (int) $id)->filter()->values();
+
+        if (! $branchId || $moduleIds->isEmpty()) {
+            return collect();
+        }
+
+        return Tax::query()
+            ->where('branch_id', $branchId)
+            ->whereIn('module_id', $moduleIds)
+            ->available()
+            ->orderBy('name')
+            ->get()
+            ->groupBy('module_id');
+    }
+
+    protected function discountsByModule($branchId, $moduleIds)
+    {
+        $moduleIds = collect($moduleIds)->map(fn ($id) => (int) $id)->filter()->values();
+
+        if (! $branchId || $moduleIds->isEmpty()) {
+            return collect();
+        }
+
+        return Discount::query()
+            ->where('branch_id', $branchId)
+            ->whereIn('module_id', $moduleIds)
+            ->available()
+            ->orderBy('name')
+            ->get()
+            ->groupBy('module_id');
+    }
+
+    protected function customerOptions()
+    {
+        $search = trim((string) $this->customer_search);
+
+        if ($search === '' || $this->customer_id) {
+            return collect();
+        }
+
+        return Customer::query()
+            ->select(['id', 'name', 'phone', 'email'])
+            ->where(function ($query) use ($search) {
+                $query->where('name', 'like', "%{$search}%")
+                    ->orWhere('phone', 'like', "%{$search}%")
+                    ->orWhere('email', 'like', "%{$search}%");
+            })
+            ->orderBy('name')
+            ->limit(15)
+            ->get();
+    }
+
     public function addToCart($menuItemId, $moduleId)
     {
         try {
@@ -234,7 +297,8 @@ class Index extends Component
 
             // allow adding items from any module accessible to the user
             $item = MenuItem::where('branch_id', $branchId)
-                ->with('module')
+                ->select(['id', 'branch_id', 'module_id', 'name', 'price', 'quantity', 'is_trackable', 'status'])
+                ->with('module:id,name')
                 ->where('status', 'available')
                 ->findOrFail($menuItemId);
 
@@ -249,13 +313,12 @@ class Index extends Component
             $this->authorizeModule($item->module_id, $branchId);
             abort_unless((int) $item->module_id === $moduleId, 403);
 
-            $cart = collect($this->cart);
+            $cart = $this->cart;
+            $existingIndex = collect($cart)->search(fn ($line) => (int) $line['menu_item_id'] === (int) $item->id);
 
-            $existing = $cart->firstWhere('menu_item_id', $item->id);
-
-            if ($existing) {
-                $cart = $cart->map(function ($line) use ($item) {
-                    if ($line['menu_item_id'] === $item->id) {
+            if ($existingIndex !== false) {
+                foreach ($cart as $index => $line) {
+                    if ($index === $existingIndex) {
                         $requestedQty = (int) $line['qty'] + 1;
 
                         if ($item->is_trackable && $requestedQty > (float) $item->quantity) {
@@ -266,12 +329,12 @@ class Index extends Component
 
                         $line['qty'] = $requestedQty;
                         $line['subtotal'] = $line['qty'] * $line['unit_price'];
+                        $cart[$index] = $line;
+                        break;
                     }
-
-                    return $line;
-                });
+                }
             } else {
-                $cart->push([
+                $cart[] = [
                     'menu_item_id' => $item->id,
                     'module_id' => $item->module_id,
                     'module_name' => $item->module?->name,
@@ -281,10 +344,10 @@ class Index extends Component
                     'tax' => 0,
                     'discount' => 0,
                     'subtotal' => (float) $item->price,
-                ]);
+                ];
             }
 
-            $this->cart = $cart->values()->toArray();
+            $this->cart = array_values($cart);
 
             $this->autofillPaymentAmount(null, 0);
         } catch (ValidationException $e) {
@@ -306,6 +369,7 @@ class Index extends Component
             $this->authorizeModule($moduleId, $branchId);
             $qty = max(1, intval($qty));
             $item = MenuItem::where('branch_id', $branchId)
+                ->select(['id', 'branch_id', 'module_id', 'name', 'price', 'quantity', 'is_trackable', 'status'])
                 ->where('module_id', $moduleId)
                 ->where('status', 'available')
                 ->findOrFail($menuItemId);
@@ -316,16 +380,17 @@ class Index extends Component
                 ]);
             }
 
-            $cart = collect($this->cart)->map(function ($line) use ($menuItemId, $qty) {
-                if ($line['menu_item_id'] === $menuItemId) {
+            $cart = $this->cart;
+            foreach ($cart as $index => $line) {
+                if ((int) $line['menu_item_id'] === (int) $menuItemId) {
                     $line['qty'] = $qty;
                     $line['subtotal'] = $qty * $line['unit_price'];
+                    $cart[$index] = $line;
+                    break;
                 }
+            }
 
-                return $line;
-            });
-
-            $this->cart = $cart->values()->toArray();
+            $this->cart = array_values($cart);
 
             $this->autofillPaymentAmount(null, 0);
         } catch (ValidationException $e) {

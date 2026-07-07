@@ -52,6 +52,8 @@
 
     @livewireScripts
 
+    @include('partials.pwa-register')
+
 </body>
 
 </html>

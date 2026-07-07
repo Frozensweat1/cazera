@@ -46,6 +46,7 @@
     <meta name="twitter:description" content="{{ $description }}">
     <meta name="twitter:image" content="{{ $image }}">
     <link rel="canonical" href="{{ url()->current() }}">
+    @include('partials.pwa-head', ['brandName' => $businessName])
     @if ($favicon)
         <link rel="icon" type="image/png" href="{{ $favicon }}">
     @else
@@ -75,6 +76,7 @@
     </div>
 
     @livewireScripts
+    @include('partials.pwa-register')
 </body>
 
 </html>

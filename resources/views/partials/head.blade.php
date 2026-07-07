@@ -14,6 +14,7 @@
  <meta name="description" content="{{ $description }}">
  <meta name="application-name" content="{{ $brandName }}">
  <meta name="theme-color" content="#0f0d0a">
+ @include('partials.pwa-head', ['brandName' => $brandName])
  <link rel="icon" type="image/x-icon" href="{{ $favicon }}">
  <link rel="apple-touch-icon" href="{{ $favicon }}">
  <link rel="preconnect" href="https://fonts.googleapis.com">

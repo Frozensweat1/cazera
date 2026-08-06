@@ -16,11 +16,9 @@ class Index extends Component
 
     public $search = '';
     public $filterBranch = '';
-    public $filterModule = '';
 
     public $discountId;
     public $branch_id;
-    public $module_id;
     public $name;
     public $code;
     public $type = 'percentage';
@@ -36,15 +34,13 @@ class Index extends Component
     {
         return [
             'branch_id' => 'required|exists:branches,id',
-            'module_id' => 'required|exists:modules,id',
             'name' => [
                 'required',
                 'string',
                 'max:255',
                 Rule::unique('discounts', 'name')
                     ->where(fn ($query) => $query
-                        ->where('branch_id', $this->branch_id)
-                        ->where('module_id', $this->module_id))
+                        ->where('branch_id', $this->branch_id))
                     ->ignore($this->discountId),
             ],
             'code' => [
@@ -53,8 +49,7 @@ class Index extends Component
                 'max:100',
                 Rule::unique('discounts', 'code')
                     ->where(fn ($query) => $query
-                        ->where('branch_id', $this->branch_id)
-                        ->where('module_id', $this->module_id))
+                        ->where('branch_id', $this->branch_id))
                     ->ignore($this->discountId),
             ],
             'type' => ['required', Rule::in(['percentage', 'fixed'])],
@@ -76,30 +71,22 @@ class Index extends Component
     public function render()
     {
         return view('livewire.backoffice.discounts.index', [
-            'discounts' => Discount::with(['branch', 'module'])
+            'discounts' => Discount::with(['branch'])
                 ->accessible()
                 ->when($this->search, fn ($query) => $query->where(function ($query) {
                     $query->where('name', 'like', "%{$this->search}%")
                         ->orWhere('code', 'like', "%{$this->search}%");
                 }))
                 ->when($this->filterBranch, fn ($query) => $query->where('branch_id', $this->filterBranch))
-                ->when($this->filterModule, fn ($query) => $query->where('module_id', $this->filterModule))
                 ->latest()
                 ->paginate(10),
             'branches' => $this->accessibleBranches(),
-            'modules' => $this->accessibleModules($this->filterBranch ?: $this->branch_id ?: null),
         ]);
     }
 
     public function updatedFilterBranch(): void
     {
-        $this->filterModule = '';
         $this->resetPage();
-    }
-
-    public function updatedBranchId(): void
-    {
-        $this->module_id = '';
     }
 
     public function create(): void
@@ -114,7 +101,6 @@ class Index extends Component
 
         $this->discountId = $discount->id;
         $this->branch_id = $discount->branch_id;
-        $this->module_id = $discount->module_id;
         $this->name = $discount->name;
         $this->code = $discount->code;
         $this->type = $discount->type;
@@ -133,11 +119,9 @@ class Index extends Component
     {
         $this->validate();
         $this->authorizeBranch($this->branch_id);
-        $this->authorizeModule($this->module_id, $this->branch_id);
 
         Discount::updateOrCreate(['id' => $this->discountId], [
             'branch_id' => $this->branch_id,
-            'module_id' => $this->module_id,
             'name' => $this->name,
             'code' => $this->code ?: null,
             'type' => $this->type,
@@ -179,7 +163,6 @@ class Index extends Component
     {
         $this->reset([
             'discountId',
-            'module_id',
             'name',
             'code',
             'type',

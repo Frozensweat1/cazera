@@ -11,7 +11,6 @@ return new class extends Migration
         Schema::create('taxes', function (Blueprint $table) {
             $table->id();
             $table->foreignId('branch_id')->constrained()->cascadeOnDelete();
-            $table->foreignId('module_id')->constrained()->cascadeOnDelete();
             $table->string('name');
             $table->decimal('rate_percent', 8, 4)->default(0);
             $table->text('description')->nullable();
@@ -20,8 +19,8 @@ return new class extends Migration
             $table->timestamp('ends_at')->nullable();
             $table->timestamps();
 
-            $table->unique(['branch_id', 'module_id', 'name']);
-            $table->index(['branch_id', 'module_id', 'is_active']);
+            $table->unique(['branch_id', 'name']);
+            $table->index(['branch_id', 'is_active']);
             $table->index(['starts_at', 'ends_at']);
         });
     }

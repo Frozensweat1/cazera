@@ -9,18 +9,12 @@
         </div>
 
         <div class="panel">
-            <div class="mb-5 grid grid-cols-1 gap-4 md:grid-cols-4">
+            <div class="mb-5 grid grid-cols-1 gap-4 md:grid-cols-3">
                 <x-ui.input name="search" wire:model.live="search" placeholder="Search taxes..." />
                 <x-ui.select name="filterBranch" wire:model.live="filterBranch">
                     <option value="">All Branches</option>
                     @foreach ($branches as $branch)
                         <option value="{{ $branch->id }}">{{ $branch->name }}</option>
-                    @endforeach
-                </x-ui.select>
-                <x-ui.select name="filterModule" wire:model.live="filterModule">
-                    <option value="">All Modules</option>
-                    @foreach ($modules as $module)
-                        <option value="{{ $module->id }}">{{ $module->name }}</option>
                     @endforeach
                 </x-ui.select>
                 <div></div>
@@ -31,7 +25,6 @@
                     <tr>
                         <th>Name</th>
                         <th>Branch</th>
-                        <th>Module</th>
                         <th>Rate</th>
                         <th>Availability</th>
                         <th>Status</th>
@@ -48,7 +41,6 @@
                                 @endif
                             </td>
                             <td>{{ $tax->branch?->name }}</td>
-                            <td>{{ $tax->module?->name }}</td>
                             <td>{{ number_format($tax->rate_percent, 2) }}%</td>
                             <td class="text-xs text-gray-500">
                                 {{ $tax->starts_at?->format('M d, Y') ?? 'Always' }}
@@ -71,7 +63,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="7" class="py-10 text-center text-gray-500">No tax rules found.</td>
+                            <td colspan="6" class="py-10 text-center text-gray-500">No tax rules found.</td>
                         </tr>
                     @endforelse
                 </tbody>
@@ -84,17 +76,11 @@
             <x-slot:title>{{ $taxId ? 'Edit Tax' : 'Add Tax' }}</x-slot:title>
 
             <div class="space-y-5">
-                <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
+                <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <x-ui.select label="Branch" name="branch_id" wire:model.live="branch_id">
                         <option value="">Select Branch</option>
                         @foreach ($branches as $branch)
                             <option value="{{ $branch->id }}">{{ $branch->name }}</option>
-                        @endforeach
-                    </x-ui.select>
-                    <x-ui.select label="Module" name="module_id" wire:model="module_id">
-                        <option value="">Select Module</option>
-                        @foreach ($modules as $module)
-                            <option value="{{ $module->id }}">{{ $module->name }}</option>
                         @endforeach
                     </x-ui.select>
                     <x-ui.input label="Tax Name" name="name" wire:model.live="name" />

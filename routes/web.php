@@ -113,6 +113,8 @@ Route::get('/careers', WebsiteCareers::class)
     ->name('website.careers');
 
 Route::middleware(['auth', 'log.backoffice'])->prefix('backoffice')->group(function () {
+Route::redirect('/', '/backoffice/home')
+    ->name('backoffice.home');
 Route::get('home', DashboardHome::class)
     ->middleware('role:Super Admin|Branch Manager|POS Operator|Accountant')
     ->name('dashboard');

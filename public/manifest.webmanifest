@@ -2,7 +2,7 @@
     "name": "Cazera Hospitality ERP",
     "short_name": "Cazera",
     "description": "Hospitality ERP, POS, inventory, finance, and website management.",
-    "start_url": "/backoffice",
+    "start_url": "/backoffice/home",
     "scope": "/",
     "display": "standalone",
     "orientation": "portrait-primary",
@@ -45,7 +45,7 @@
         {
             "name": "Dashboard",
             "short_name": "Dashboard",
-            "url": "/backoffice",
+            "url": "/backoffice/home",
             "description": "Open the backoffice dashboard."
         }
     ]

@@ -16,11 +16,9 @@ class Index extends Component
 
     public $search = '';
     public $filterBranch = '';
-    public $filterModule = '';
 
     public $taxId;
     public $branch_id;
-    public $module_id;
     public $name;
     public $rate_percent = 0;
     public $description;
@@ -32,15 +30,13 @@ class Index extends Component
     {
         return [
             'branch_id' => 'required|exists:branches,id',
-            'module_id' => 'required|exists:modules,id',
             'name' => [
                 'required',
                 'string',
                 'max:255',
                 Rule::unique('taxes', 'name')
                     ->where(fn ($query) => $query
-                        ->where('branch_id', $this->branch_id)
-                        ->where('module_id', $this->module_id))
+                        ->where('branch_id', $this->branch_id))
                     ->ignore($this->taxId),
             ],
             'rate_percent' => 'required|numeric|min:0|max:100',
@@ -54,27 +50,19 @@ class Index extends Component
     public function render()
     {
         return view('livewire.backoffice.taxes.index', [
-            'taxes' => Tax::with(['branch', 'module'])
+            'taxes' => Tax::with(['branch'])
                 ->accessible()
                 ->when($this->search, fn ($query) => $query->where('name', 'like', "%{$this->search}%"))
                 ->when($this->filterBranch, fn ($query) => $query->where('branch_id', $this->filterBranch))
-                ->when($this->filterModule, fn ($query) => $query->where('module_id', $this->filterModule))
                 ->latest()
                 ->paginate(10),
             'branches' => $this->accessibleBranches(),
-            'modules' => $this->accessibleModules($this->filterBranch ?: $this->branch_id ?: null),
         ]);
     }
 
     public function updatedFilterBranch(): void
     {
-        $this->filterModule = '';
         $this->resetPage();
-    }
-
-    public function updatedBranchId(): void
-    {
-        $this->module_id = '';
     }
 
     public function create(): void
@@ -89,7 +77,6 @@ class Index extends Component
 
         $this->taxId = $tax->id;
         $this->branch_id = $tax->branch_id;
-        $this->module_id = $tax->module_id;
         $this->name = $tax->name;
         $this->rate_percent = $tax->rate_percent;
         $this->description = $tax->description;
@@ -104,11 +91,9 @@ class Index extends Component
     {
         $this->validate();
         $this->authorizeBranch($this->branch_id);
-        $this->authorizeModule($this->module_id, $this->branch_id);
 
         Tax::updateOrCreate(['id' => $this->taxId], [
             'branch_id' => $this->branch_id,
-            'module_id' => $this->module_id,
             'name' => $this->name,
             'rate_percent' => $this->rate_percent,
             'description' => $this->description,
@@ -146,7 +131,6 @@ class Index extends Component
     {
         $this->reset([
             'taxId',
-            'module_id',
             'name',
             'rate_percent',
             'description',

@@ -9,21 +9,21 @@ use App\Models\Discount;
 use App\Models\MenuItem;
 use App\Models\MenuItemAdjustment;
 use App\Models\Module;
-use App\Models\CashRegister;
-use App\Models\CashRegisterTransaction;
 use App\Models\Sale;
 use App\Models\SaleItem;
-use App\Models\Payment;
 use App\Models\Tax;
+use App\Support\PosCache;
+use App\Support\SalePaymentRecorder;
 use App\Support\SaleTableRelease;
 use App\Support\WebsiteContent;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
-use Livewire\Component;
 use Jantinnerezo\LivewireAlert\Facades\LivewireAlert;
-use Illuminate\Support\Facades\Log;
+use Livewire\Component;
 use Throwable;
 
 class Index extends Component
@@ -31,32 +31,60 @@ class Index extends Component
     use HasBranchScope;
 
     public $customer_id;
+
     public $customer_search = '';
+
     public $new_customer_name;
+
     public $new_customer_email;
+
     public $new_customer_phone;
+
     public $new_customer_address;
 
     public $sale_type = 'dine_in';
+
     public $payment_method = 'cash';
+
     public $payment_amount = 0;
+
     public $splitPayments = [];
+
     public $menuSearch = [];
+
     public $discount = 0;
+
     public $discount_id;
+
     public $notes;
+
     public $status = 'pending';
+
     public $notifyKitchen = false;
+
     public $table_id;
+
     public $cart = [];
+
     public $receiptSaleId;
+
     public $recentPaymentSaleId;
+
     public $recent_payment_method = 'cash';
+
     public $recent_payment_amount = 0;
+
     public $recent_payment_reference = '';
+
     public $editingSaleId;
+
     public $editingSaleNumber;
+
     public $editingOriginalDiscount = 0;
+
+    public $activeModuleId;
+
+    public bool $showDailySales = false;
 
     protected array $cashPaymentMethods = ['cash', 'mobile_money', 'card', 'bank_transfer', 'wallet'];
 
@@ -96,13 +124,19 @@ class Index extends Component
         $modules = $this->getAccessibleModules($branchId);
 
         $moduleIds = $modules->pluck('id')->map(fn ($id) => (int) $id)->values();
+        if ($moduleIds->isNotEmpty() && (! $this->activeModuleId || ! $moduleIds->contains((int) $this->activeModuleId))) {
+            $this->activeModuleId = (int) $moduleIds->first();
+        }
+
         $menuItems = $this->menuItemsByModule($branchId, $moduleIds);
         $menuItemsUnified = $menuItems->flatten(1)->keyBy('id');
-        $taxesByModule = $this->taxesByModule($branchId, $moduleIds);
-        $discountsByModule = $this->discountsByModule($branchId, $moduleIds);
+        $taxes = $this->taxesForBranch($branchId);
+        $availableDiscounts = $this->discountsForBranch($branchId);
 
         $receiptSale = $this->receiptSaleId
-            ? Sale::with(['branch', 'module', 'customer', 'creator', 'items', 'payments.receiver'])->find($this->receiptSaleId)
+            ? Sale::with(['branch', 'modules', 'customer', 'creator', 'items', 'payments.receiver'])
+                ->accessible()
+                ->find($this->receiptSaleId)
             : null;
 
         $cartLines = collect($this->cart);
@@ -115,44 +149,24 @@ class Index extends Component
         $mixedCartModuleNames = $modules
             ->whereIn('id', $filledCartModuleIds)
             ->pluck('name');
-        $orderSummary = $this->calculateOrderSummary($cartLines, $modules, $taxesByModule, $discountsByModule);
-        $availableDiscounts = $discountsByModule
-            ->flatten(1)
-            ->when(
-                $filledCartModuleIds->isNotEmpty(),
-                fn ($discounts) => $discounts->whereIn('module_id', $filledCartModuleIds)
-            )
-            ->values();
-
-        $todayStart = now()->startOfDay();
-        $todayEnd = now()->endOfDay();
-        $canSeeAllTodaySales = auth()->user()?->isSuperAdmin() || auth()->user()?->isBranchManager();
+        $orderSummary = $this->calculateOrderSummary($cartLines, $modules, $taxes, $availableDiscounts);
 
         return view('livewire.backoffice.pos.index', [
             'modules' => $modules,
             'menuItemsByModule' => $menuItems,
             'menuItemsUnified' => $menuItemsUnified,
-            'taxesByModule' => $taxesByModule,
-            'discountsByModule' => $discountsByModule,
+            'taxes' => $taxes,
             'mixedCartModuleNames' => $mixedCartModuleNames,
             'mixedCartModuleCount' => $filledCartModuleIds->unique()->count(),
             'cartLines' => $cartLines,
             'orderSummary' => $orderSummary,
             'availableDiscounts' => $availableDiscounts,
             'customers' => $this->customerOptions(),
-            'lastSales' => Sale::with(['customer:id,name', 'latestPayment.receiver:id,name', 'table:id,name,status'])
-                ->where('branch_id', $branchId)
-                ->where('status', '!=', 'refunded')
-                ->whereBetween('sale_date', [$todayStart, $todayEnd])
-                ->forModules($moduleIds)
-                ->when(! $canSeeAllTodaySales, fn($query) => $query->where('created_by', auth()->id()))
-                ->latest('sale_date')
-                ->limit(30)
-                ->get(),
+            'lastSales' => $this->showDailySales ? $this->dailySales($branchId, $moduleIds) : collect(),
             'receiptSale' => $receiptSale,
             'receiptTaxes' => $this->receiptTaxBreakdown($receiptSale),
             'recentPaymentSale' => $this->recentPaymentSaleId
-                ? Sale::with(['customer', 'branch', 'module'])->accessible()->find($this->recentPaymentSaleId)
+                ? Sale::with(['customer', 'branch', 'modules'])->accessible()->find($this->recentPaymentSaleId)
                 : null,
             'availableTables' => $branchId && $this->sale_type === 'dine_in'
                 ? DiningTable::where('branch_id', $branchId)
@@ -177,21 +191,23 @@ class Index extends Component
             return collect();
         }
 
-        return $this->accessibleModules($branchId, 'pos');
+        return Cache::remember(
+            PosCache::accessibleModulesKey((int) auth()->id(), (int) $branchId),
+            now()->addMinute(),
+            fn () => $this->accessibleModules($branchId, 'pos')
+        );
     }
 
     protected function menuItemsByModule($branchId, $moduleIds)
     {
         $moduleIds = collect($moduleIds)->map(fn ($id) => (int) $id)->filter()->values();
+        $activeModuleId = (int) $this->activeModuleId;
 
-        if (! $branchId || $moduleIds->isEmpty()) {
+        if (! $branchId || $moduleIds->isEmpty() || ! $activeModuleId || ! $moduleIds->contains($activeModuleId)) {
             return collect();
         }
 
-        $searches = $moduleIds
-            ->mapWithKeys(fn ($moduleId) => [$moduleId => trim((string) data_get($this->menuSearch, $moduleId, ''))])
-            ->filter();
-        $unsearchedModuleIds = $moduleIds->diff($searches->keys()->map(fn ($id) => (int) $id))->values();
+        $search = trim((string) data_get($this->menuSearch, $activeModuleId, ''));
 
         return MenuItem::query()
             ->select([
@@ -208,64 +224,85 @@ class Index extends Component
                 'status',
             ])
             ->where('branch_id', $branchId)
-            ->whereIn('module_id', $moduleIds)
+            ->where('module_id', $activeModuleId)
             ->where('status', 'available')
-            ->when($searches->isNotEmpty(), function ($query) use ($searches, $unsearchedModuleIds) {
-                $query->where(function ($query) use ($searches, $unsearchedModuleIds) {
-                    if ($unsearchedModuleIds->isNotEmpty()) {
-                        $query->orWhereIn('module_id', $unsearchedModuleIds);
-                    }
-
-                    foreach ($searches as $moduleId => $search) {
-                        $query->orWhere(function ($query) use ($moduleId, $search) {
-                            $query->where('module_id', $moduleId)
-                                ->where(function ($query) use ($search) {
-                                    $query->where('name', 'like', "%{$search}%")
-                                        ->orWhere('description', 'like', "%{$search}%")
-                                        ->orWhereHas('category', fn ($subQuery) => $subQuery->where('name', 'like', "%{$search}%"));
-                                });
-                        });
-                    }
+            ->when($search, function ($query) use ($search) {
+                $query->where(function ($query) use ($search) {
+                    $query->where('name', 'like', "%{$search}%")
+                        ->orWhere('description', 'like', "%{$search}%")
+                        ->orWhereHas('category', fn ($subQuery) => $subQuery->where('name', 'like', "%{$search}%"));
                 });
             })
-            ->orderBy('module_id')
             ->orderBy('name')
             ->get()
             ->groupBy('module_id');
     }
 
-    protected function taxesByModule($branchId, $moduleIds)
+    protected function taxesForBranch($branchId)
     {
-        $moduleIds = collect($moduleIds)->map(fn ($id) => (int) $id)->filter()->values();
-
-        if (! $branchId || $moduleIds->isEmpty()) {
+        if (! $branchId) {
             return collect();
         }
 
-        return Tax::query()
-            ->where('branch_id', $branchId)
-            ->whereIn('module_id', $moduleIds)
-            ->available()
-            ->orderBy('name')
-            ->get()
-            ->groupBy('module_id');
+        return Cache::remember(
+            PosCache::taxesKey((int) $branchId),
+            now()->addMinutes(5),
+            fn () => Tax::query()
+                ->where('branch_id', $branchId)
+                ->available()
+                ->orderBy('name')
+                ->get()
+        );
     }
 
-    protected function discountsByModule($branchId, $moduleIds)
+    protected function discountsForBranch($branchId)
     {
-        $moduleIds = collect($moduleIds)->map(fn ($id) => (int) $id)->filter()->values();
-
-        if (! $branchId || $moduleIds->isEmpty()) {
+        if (! $branchId) {
             return collect();
         }
 
-        return Discount::query()
+        return Cache::remember(
+            PosCache::discountsKey((int) $branchId),
+            now()->addMinutes(5),
+            fn () => Discount::query()
+                ->where('branch_id', $branchId)
+                ->available()
+                ->orderBy('name')
+                ->get()
+        );
+    }
+
+    public function setActiveModule(int $moduleId): void
+    {
+        $branchId = session('branch_id');
+        $this->authorizeModule($moduleId, $branchId);
+        $this->activeModuleId = $moduleId;
+    }
+
+    public function loadDailySales(): void
+    {
+        $this->showDailySales = true;
+    }
+
+    protected function dailySales($branchId, $moduleIds)
+    {
+        if (! $branchId) {
+            return collect();
+        }
+
+        $todayStart = now()->startOfDay();
+        $todayEnd = now()->endOfDay();
+        $canSeeAllTodaySales = auth()->user()?->isSuperAdmin() || auth()->user()?->isBranchManager();
+
+        return Sale::with(['customer:id,name', 'modules', 'latestPayment.receiver:id,name', 'table:id,name,status'])
             ->where('branch_id', $branchId)
-            ->whereIn('module_id', $moduleIds)
-            ->available()
-            ->orderBy('name')
-            ->get()
-            ->groupBy('module_id');
+            ->where('status', '!=', 'refunded')
+            ->whereBetween('sale_date', [$todayStart, $todayEnd])
+            ->forModules($moduleIds)
+            ->when(! $canSeeAllTodaySales, fn ($query) => $query->where('created_by', auth()->id()))
+            ->latest('sale_date')
+            ->limit(30)
+            ->get();
     }
 
     protected function customerOptions()
@@ -278,6 +315,7 @@ class Index extends Component
 
         return Customer::query()
             ->select(['id', 'name', 'phone', 'email'])
+            ->where('branch_id', session('branch_id'))
             ->where(function ($query) use ($search) {
                 $query->where('name', 'like', "%{$search}%")
                     ->orWhere('phone', 'like', "%{$search}%")
@@ -323,7 +361,7 @@ class Index extends Component
 
                         if ($item->is_trackable && $requestedQty > (float) $item->quantity) {
                             throw ValidationException::withMessages([
-                                'cart' => "{$item->name} has only " . number_format((float) $item->quantity, 0) . ' available.',
+                                'cart' => "{$item->name} has only ".number_format((float) $item->quantity, 0).' available.',
                             ]);
                         }
 
@@ -376,7 +414,7 @@ class Index extends Component
 
             if ($item->is_trackable && $qty > (float) $item->quantity) {
                 throw ValidationException::withMessages([
-                    'cart' => "{$item->name} has only " . number_format((float) $item->quantity, 0) . ' available.',
+                    'cart' => "{$item->name} has only ".number_format((float) $item->quantity, 0).' available.',
                 ]);
             }
 
@@ -408,7 +446,7 @@ class Index extends Component
     {
         $moduleId = (int) $moduleId;
         $this->cart = collect($this->cart)
-            ->reject(fn($line) => $line['menu_item_id'] === $menuItemId)
+            ->reject(fn ($line) => $line['menu_item_id'] === $menuItemId)
             ->values()
             ->toArray();
 
@@ -442,12 +480,21 @@ class Index extends Component
         $this->discount_id = $this->discount_id ?: null;
     }
 
+    public function updatedSaleType(): void
+    {
+        if ($this->sale_type !== 'dine_in') {
+            $this->table_id = null;
+        }
+    }
+
     public function selectCustomer($customerId): void
     {
-        $customer = Customer::findOrFail($customerId);
+        $customer = Customer::query()
+            ->where('branch_id', session('branch_id'))
+            ->findOrFail($customerId);
 
         $this->customer_id = $customer->id;
-        $this->customer_search = trim($customer->name . ' ' . ($customer->phone ? '- ' . $customer->phone : ''));
+        $this->customer_search = trim($customer->name.' '.($customer->phone ? '- '.$customer->phone : ''));
     }
 
     public function clearCustomer(): void
@@ -466,6 +513,7 @@ class Index extends Component
 
         if ($method === 'credit_sale') {
             $this->splitPayments[$index]['amount'] = 0;
+
             return;
         }
 
@@ -497,7 +545,7 @@ class Index extends Component
         $this->editingSaleNumber = $sale->sale_number;
         $this->editingOriginalDiscount = (float) $sale->discount;
         $this->customer_id = $sale->customer_id;
-        $this->customer_search = $sale->customer ? trim($sale->customer->name . ' ' . ($sale->customer->phone ? '- ' . $sale->customer->phone : '')) : '';
+        $this->customer_search = $sale->customer ? trim($sale->customer->name.' '.($sale->customer->phone ? '- '.$sale->customer->phone : '')) : '';
         $this->sale_type = $sale->type;
         $this->table_id = $sale->table_id;
         $this->notes = $sale->notes;
@@ -558,48 +606,30 @@ class Index extends Component
 
             DB::transaction(function () {
                 $sale = Sale::accessible()
+                    ->with('items')
                     ->where('status', '!=', 'refunded')
                     ->lockForUpdate()
                     ->findOrFail($this->recentPaymentSaleId);
 
                 $amount = round((float) $this->recent_payment_amount, 2);
-                abort_if($amount > (float) $sale->remaining_balance, 422, 'Payment cannot exceed outstanding balance.');
+                if ($amount > (float) $sale->remaining_balance) {
+                    throw ValidationException::withMessages([
+                        'recent_payment_amount' => 'Payment cannot exceed the outstanding balance.',
+                    ]);
+                }
 
-                $moduleId = $sale->items->pluck('module_id')->filter()->first();
-                $cashRegister = $moduleId
-                    ? $this->openRegisterFor($sale->branch_id, (int) $moduleId, 'Auto-opened POS payment register')
-                    : $this->openRegisterFor($sale->branch_id, 0, 'Auto-opened POS payment register');
-
-                CashRegisterTransaction::create([
-                    'cash_register_id' => $cashRegister->id,
-                    'branch_id' => $sale->branch_id,
-                    'module_id' => $moduleId,
-                    'sale_id' => $sale->id,
-                    'performed_by' => auth()->id(),
-                    'type' => 'sale',
-                    'amount' => $amount,
-                    'notes' => 'Outstanding payment for sale ' . $sale->sale_number,
-                    'transaction_date' => now(),
-                ]);
-
-                $cashRegister->addExpectedBalanceForTransaction('sale', $amount);
-
-                Payment::create([
-                    'sale_id' => $sale->id,
-                    'branch_id' => $sale->branch_id,
-                    'module_id' => $moduleId,
-                    'cash_register_id' => $cashRegister->id,
-                    'received_by' => auth()->id(),
-                    'method' => $this->recent_payment_method,
-                    'amount' => $amount,
-                    'transaction_reference' => $this->recent_payment_reference ?: null,
-                    'status' => 'completed',
-                    'notes' => 'Outstanding sale payment recorded from POS recent sales.',
-                    'paid_at' => now(),
-                ]);
+                SalePaymentRecorder::recordCollection(
+                    sale: $sale,
+                    method: $this->recent_payment_method,
+                    amount: $amount,
+                    reference: $this->recent_payment_reference ?: null,
+                    userId: (int) auth()->id(),
+                    registerName: 'Auto-opened POS payment register',
+                    notes: 'Outstanding payment for sale '.$sale->sale_number,
+                );
 
                 $paid = round((float) $sale->paid_amount + $amount, 2);
-                $remaining = round((float) $sale->total - $paid, 2);
+                $remaining = round((float) $sale->total - $paid - (float) $sale->refunded_amount, 2);
 
                 $sale->update([
                     'paid_amount' => $paid,
@@ -623,6 +653,8 @@ class Index extends Component
                 ->text('The sale balance has been updated.')
                 ->success()
                 ->show();
+        } catch (ValidationException $e) {
+            throw $e;
         } catch (Throwable $e) {
             Log::error('recordRecentPayment failed', ['exception' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
             LivewireAlert::title('Error')
@@ -724,14 +756,24 @@ class Index extends Component
                 }
             });
         })->validate([
-            'customer_id' => 'nullable|exists:customers,id',
+            'customer_id' => [
+                'nullable',
+                Rule::exists('customers', 'id')->where(fn ($query) => $query->where('branch_id', $branchId)),
+            ],
             'sale_type' => 'required|in:dine_in,takeaway,delivery,online',
-            'table_id' => ['nullable', 'required_if:sale_type,dine_in', 'exists:tables,id'],
+            'table_id' => [
+                'nullable',
+                'required_if:sale_type,dine_in',
+                Rule::exists('tables', 'id')->where(fn ($query) => $query->where('branch_id', $branchId)),
+            ],
             'splitPayments' => 'array|min:1',
             'splitPayments.*.method' => 'required|in:cash,mobile_money,card,bank_transfer,wallet,credit_sale',
             'splitPayments.*.amount' => 'required|numeric|min:0',
             'splitPayments.*.transaction_reference' => 'nullable|string|max:255',
-            'discount_id' => 'nullable|exists:discounts,id',
+            'discount_id' => [
+                'nullable',
+                Rule::exists('discounts', 'id')->where(fn ($query) => $query->where('branch_id', $branchId)),
+            ],
             'notes' => 'nullable|string|max:1000',
         ]);
 
@@ -780,16 +822,12 @@ class Index extends Component
             Module::whereIn('id', $cart->pluck('module_id')->unique())->get(),
             Tax::query()
                 ->where('branch_id', $branchId)
-                ->whereIn('module_id', $cart->pluck('module_id')->unique())
                 ->available()
-                ->get()
-                ->groupBy('module_id'),
+                ->get(),
             Discount::query()
                 ->where('branch_id', $branchId)
-                ->whereIn('module_id', $cart->pluck('module_id')->unique())
                 ->available()
                 ->get()
-                ->groupBy('module_id')
         );
         $subtotal = $summary['subtotal'];
         $serviceCharge = $summary['service_charge'];
@@ -822,7 +860,7 @@ class Index extends Component
         $editingSaleId = $this->editingSaleId;
 
         try {
-            $sale = DB::transaction(function () use ($branchId, $cart, $subtotal, $tax, $discount, $serviceCharge, $total, $paidAmount, $remaining, $isDebt, $saleStatus, $saleItemStatus, $payments, $editingSaleId, $menuItems) {
+            $sale = DB::transaction(function () use ($branchId, $cart, $subtotal, $tax, $discount, $serviceCharge, $total, $paidAmount, $remaining, $isDebt, $saleStatus, $saleItemStatus, $payments, $editingSaleId) {
                 $existingSale = null;
                 $originalCustomerId = null;
                 $originalTotal = 0.0;
@@ -918,7 +956,7 @@ class Index extends Component
                         'branch_id' => $branchId,
                         'customer_id' => $this->customer_id,
                         'created_by' => auth()->id(),
-                        'sale_number' => strtoupper('S' . $now->format('YmdHis') . Str::random(3)),
+                        'sale_number' => strtoupper('S'.$now->format('YmdHis').Str::random(3)),
                         'type' => $this->sale_type,
                         'status' => $saleStatus,
                         'subtotal' => $subtotal,
@@ -967,6 +1005,8 @@ class Index extends Component
                             'sku' => null,
                             'qty' => $newQty,
                             'unit_price' => $line['unit_price'],
+                            'unit_cost' => (float) ($menuItem->cost_price ?? 0),
+                            'is_trackable' => (bool) $menuItem->is_trackable,
                             'tax' => 0,
                             'discount' => 0,
                             'subtotal' => $line['subtotal'],
@@ -997,7 +1037,7 @@ class Index extends Component
                             'quantity_before' => $quantityBefore,
                             'quantity_after' => $quantityAfter,
                             'reference_no' => $sale->sale_number,
-                            'notes' => ($editingSaleId ? 'Inventory adjustment for edited sale ' : 'Inventory reduction for sale ') . $sale->sale_number,
+                            'notes' => ($editingSaleId ? 'Inventory adjustment for edited sale ' : 'Inventory reduction for sale ').$sale->sale_number,
                             'transaction_date' => $now,
                         ]);
 
@@ -1035,7 +1075,7 @@ class Index extends Component
                             'quantity_after' => $quantityAfter,
                             'change_qty' => (int) $removedItem->qty,
                             'reference_no' => $sale->sale_number,
-                            'notes' => 'Inventory restoration for removed item on edited sale ' . $sale->sale_number,
+                            'notes' => 'Inventory restoration for removed item on edited sale '.$sale->sale_number,
                             'transaction_date' => $now,
                         ]);
                     }
@@ -1052,59 +1092,18 @@ class Index extends Component
                 }
 
                 if ($paidAmount > 0) {
-                    $cashRegisters = [];
+                    $sale->setRelation('items', $sale->items()->get(['module_id', 'subtotal']));
 
                     foreach ($payments as $payment) {
-                        $paymentSplit = $sale->moduleBreakdownForAmount((float) $payment['amount'], $cart->map(function ($line) use ($menuItems) {
-                            $menuItem = $menuItems->get($line['menu_item_id']);
-
-                            return (object) [
-                                'module_id' => $menuItem?->module_id,
-                                'subtotal' => $line['subtotal'],
-                            ];
-                        }));
-
-                        foreach ($paymentSplit as $moduleId => $moduleAmount) {
-                            if ($moduleAmount <= 0) {
-                                continue;
-                            }
-
-                            $moduleId = (int) $moduleId;
-
-                            if (! isset($cashRegisters[$moduleId])) {
-                                $cashRegisters[$moduleId] = $this->openRegisterFor($branchId, $moduleId, 'Auto-opened POS register');
-                            }
-
-                            $cashRegister = $cashRegisters[$moduleId];
-
-                            CashRegisterTransaction::create([
-                                'cash_register_id' => $cashRegister->id,
-                                'branch_id' => $branchId,
-                                'module_id' => $moduleId,
-                                'sale_id' => $sale->id,
-                                'performed_by' => auth()->id(),
-                                'type' => 'sale',
-                                'amount' => $moduleAmount,
-                                'notes' => 'Sale ' . $sale->sale_number . ' ' . str_replace('_', ' ', $payment['method']) . ' payment',
-                                'transaction_date' => $now,
-                            ]);
-
-                            $cashRegister->addExpectedBalanceForTransaction('sale', $moduleAmount);
-
-                            Payment::create([
-                                'sale_id' => $sale->id,
-                                'branch_id' => $branchId,
-                                'module_id' => $moduleId,
-                                'cash_register_id' => $cashRegister->id,
-                                'received_by' => auth()->id(),
-                                'method' => $payment['method'],
-                                'amount' => $moduleAmount,
-                                'transaction_reference' => $payment['transaction_reference'],
-                                'status' => 'completed',
-                                'notes' => null,
-                                'paid_at' => $now,
-                            ]);
-                        }
+                        SalePaymentRecorder::recordCollection(
+                            sale: $sale,
+                            method: $payment['method'],
+                            amount: (float) $payment['amount'],
+                            reference: $payment['transaction_reference'],
+                            userId: (int) auth()->id(),
+                            registerName: 'Auto-opened POS register',
+                            notes: 'Sale '.$sale->sale_number.' '.str_replace('_', ' ', $payment['method']).' payment',
+                        );
                     }
                 }
 
@@ -1113,21 +1112,21 @@ class Index extends Component
                         $delta = round($total - $originalTotal, 2);
                         if ($delta !== 0 && $this->customer_id) {
                             Customer::whereKey($this->customer_id)
-                                ->update(['total_spent' => DB::raw('GREATEST(COALESCE(total_spent, 0) + ' . $delta . ', 0)')]);
+                                ->update(['total_spent' => DB::raw('GREATEST(COALESCE(total_spent, 0) + '.$delta.', 0)')]);
                         }
                     } else {
                         if ($originalCustomerId) {
                             Customer::whereKey($originalCustomerId)
                                 ->update([
                                     'total_orders' => DB::raw('GREATEST(COALESCE(total_orders, 0) - 1, 0)'),
-                                    'total_spent' => DB::raw('GREATEST(COALESCE(total_spent, 0) - ' . $originalTotal . ', 0)'),
+                                    'total_spent' => DB::raw('GREATEST(COALESCE(total_spent, 0) - '.$originalTotal.', 0)'),
                                 ]);
                         }
                         if ($this->customer_id) {
                             Customer::whereKey($this->customer_id)
                                 ->update([
                                     'total_orders' => DB::raw('COALESCE(total_orders, 0) + 1'),
-                                    'total_spent' => DB::raw('COALESCE(total_spent, 0) + ' . $total),
+                                    'total_spent' => DB::raw('COALESCE(total_spent, 0) + '.$total),
                                     'last_order_at' => $now,
                                 ]);
                         }
@@ -1135,7 +1134,7 @@ class Index extends Component
                 } elseif ($this->customer_id) {
                     Customer::where('id', $this->customer_id)->update([
                         'total_orders' => DB::raw('COALESCE(total_orders, 0) + 1'),
-                        'total_spent' => DB::raw('COALESCE(total_spent, 0) + ' . $sale->total),
+                        'total_spent' => DB::raw('COALESCE(total_spent, 0) + '.$sale->total),
                         'last_order_at' => $now,
                     ]);
                 }
@@ -1189,58 +1188,51 @@ class Index extends Component
             return asset(ltrim($path, '/'));
         }
 
-        return asset('storage/' . ltrim($path, '/'));
+        return asset('storage/'.ltrim($path, '/'));
     }
 
     protected function receiptSettings(): array
     {
-        $settings = WebsiteContent::settings();
+        return Cache::remember(PosCache::receiptSettingsKey(), now()->addMinutes(5), function () {
+            $settings = WebsiteContent::settings();
 
-        return [
-            'business_name' => $settings?->business_name ?: config('app.name', 'Cazera'),
-            'logo' => $settings?->logo ? WebsiteContent::assetPath($settings->logo) : null,
-            'tagline' => $settings?->tagline,
-            'address' => $settings?->address,
-            'phone' => $settings?->phone,
-            'email' => $settings?->email,
-            'whatsapp' => $settings?->whatsapp,
-        ];
+            return [
+                'business_name' => $settings?->business_name ?: config('app.name', 'Cazera'),
+                'logo' => $settings?->logo ? WebsiteContent::assetPath($settings->logo) : null,
+                'tagline' => $settings?->tagline,
+                'address' => $settings?->address,
+                'phone' => $settings?->phone,
+                'email' => $settings?->email,
+                'whatsapp' => $settings?->whatsapp,
+            ];
+        });
     }
 
-    protected function calculateOrderSummary($cart = null, $modules = null, $taxesByModule = null, $discountsByModule = null): array
+    protected function calculateOrderSummary($cart = null, $modules = null, $taxes = null, $discounts = null): array
     {
         $branchId = session('branch_id');
         $cart = collect($cart ?? $this->cart);
         $moduleIds = $cart->pluck('module_id')->filter()->unique()->values();
         $modules = collect($modules ?? Module::whereIn('id', $moduleIds)->get())->keyBy('id');
-        $taxesByModule = collect($taxesByModule ?? Tax::query()
+        $taxes = collect($taxes ?? Tax::query()
             ->where('branch_id', $branchId)
-            ->whereIn('module_id', $moduleIds)
             ->available()
-            ->get()
-            ->groupBy('module_id'));
-        $discountsByModule = collect($discountsByModule ?? Discount::query()
+            ->get());
+        $discounts = collect($discounts ?? Discount::query()
             ->where('branch_id', $branchId)
-            ->whereIn('module_id', $moduleIds)
             ->available()
-            ->get()
-            ->groupBy('module_id'));
+            ->get());
+        $taxRate = (float) $taxes->sum('rate_percent') / 100;
 
         $moduleSummaries = $cart
             ->groupBy('module_id')
-            ->map(function ($lines, $moduleId) use ($modules, $taxesByModule, $discountsByModule, $branchId) {
+            ->map(function ($lines, $moduleId) use ($modules, $taxRate) {
                 $subtotal = round((float) $lines->sum('subtotal'), 2);
                 $module = $modules->get((int) $moduleId);
                 $serviceChargeRate = data_get($module?->pos_settings, 'service_charge', 0) / 100;
                 $serviceCharge = round($subtotal * $serviceChargeRate, 2);
                 $billBeforeDiscount = round($subtotal + $serviceCharge, 2);
-                $taxRate = (float) collect($taxesByModule->get((int) $moduleId, collect()))->sum('rate_percent') / 100;
                 $tax = round($billBeforeDiscount * $taxRate, 2);
-                $selectedDiscount = collect($discountsByModule->get((int) $moduleId, collect()))
-                    ->firstWhere('id', (int) $this->discount_id);
-                $discount = $selectedDiscount
-                    ? $selectedDiscount->calculateFor($billBeforeDiscount)
-                    : 0.0;
 
                 return [
                     'module_id' => (int) $moduleId,
@@ -1249,22 +1241,45 @@ class Index extends Component
                     'service_charge' => $serviceCharge,
                     'tax_rate' => $taxRate,
                     'tax' => $tax,
-                    'discount' => $discount,
-                    'total' => round(max(0, $billBeforeDiscount + $tax - $discount), 2),
+                    'discount' => 0.0,
+                    'total' => round(max(0, $billBeforeDiscount + $tax), 2),
                     'items' => $lines->sum('qty'),
                 ];
             })
             ->values();
 
-        $discount = $moduleSummaries->sum('discount');
+        $subtotal = round((float) $moduleSummaries->sum('subtotal'), 2);
+        $serviceCharge = round((float) $moduleSummaries->sum('service_charge'), 2);
+        $tax = round((float) $moduleSummaries->sum('tax'), 2);
+        $billBeforeDiscount = round($subtotal + $serviceCharge, 2);
+        $selectedDiscount = $this->discount_id
+            ? $discounts->firstWhere('id', (int) $this->discount_id)
+            : null;
+        $discount = $selectedDiscount
+            ? $selectedDiscount->calculateFor($billBeforeDiscount)
+            : 0.0;
 
         if ($this->editingSaleId && ! $this->discount_id) {
             $discount = (float) $this->editingOriginalDiscount;
         }
 
-        $subtotal = round((float) $moduleSummaries->sum('subtotal'), 2);
-        $serviceCharge = round((float) $moduleSummaries->sum('service_charge'), 2);
-        $tax = round((float) $moduleSummaries->sum('tax'), 2);
+        if ($discount > 0 && $moduleSummaries->isNotEmpty()) {
+            $basis = max((float) $moduleSummaries->sum('subtotal'), 0.01);
+            $allocated = 0.0;
+            $lastKey = $moduleSummaries->keys()->last();
+
+            $moduleSummaries = $moduleSummaries->map(function (array $summary, int $key) use ($discount, $basis, &$allocated, $lastKey) {
+                $moduleDiscount = $key === $lastKey
+                    ? round($discount - $allocated, 2)
+                    : round($discount * ((float) $summary['subtotal'] / $basis), 2);
+                $allocated += $moduleDiscount;
+                $summary['discount'] = $moduleDiscount;
+                $summary['total'] = round(max(0, (float) $summary['total'] - $moduleDiscount), 2);
+
+                return $summary;
+            });
+        }
+
         $total = round(max(0, $subtotal + $serviceCharge + $tax - $discount), 2);
         $paid = round((float) collect($this->splitPayments)
             ->filter(fn ($payment) => ($payment['method'] ?? 'cash') !== 'credit_sale')
@@ -1311,27 +1326,10 @@ class Index extends Component
             ->show();
     }
 
-    protected function openRegisterFor(int $branchId, int $moduleId, string $name): CashRegister
-    {
-        $register = CashRegister::where('branch_id', $branchId)
-            ->where('module_id', $moduleId)
-            ->where('is_open', true)
-            ->latest('opened_at')
-            ->first();
-
-        return $register ?: CashRegister::create([
-            'branch_id' => $branchId,
-            'module_id' => $moduleId,
-            'opened_by' => auth()->id(),
-            'name' => $name,
-        ]);
-    }
-
     public function displayTaxAmount(int $branchId, int $moduleId, float $billAmount): float
     {
         $rate = Tax::query()
             ->where('branch_id', $branchId)
-            ->where('module_id', $moduleId)
             ->available()
             ->sum('rate_percent');
 
@@ -1344,11 +1342,8 @@ class Index extends Component
             return collect();
         }
 
-        $primaryModuleId = $sale->items->pluck('module_id')->filter()->first();
-
         $taxes = Tax::query()
             ->where('branch_id', $sale->branch_id)
-            ->when($primaryModuleId, fn ($query) => $query->where('module_id', $primaryModuleId))
             ->available()
             ->orderBy('name')
             ->get();
@@ -1390,7 +1385,6 @@ class Index extends Component
 
         $discount = Discount::query()
             ->where('branch_id', $branchId)
-            ->where('module_id', $moduleId)
             ->available()
             ->find($this->discount_id);
 

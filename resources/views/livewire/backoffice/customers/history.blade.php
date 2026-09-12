@@ -100,15 +100,15 @@
                             </div>
                             <div class="rounded-xl bg-success-light p-4 text-success">
                                 <p class="text-xs font-bold uppercase">Sales</p>
-                                <p class="mt-2 text-2xl font-bold">{{ number_format($historyTotals['sales'], 2) }}</p>
+                                <p class="mt-2 text-2xl font-bold"><x-ui.money :amount="$historyTotals['sales']" /></p>
                             </div>
                             <div class="rounded-xl bg-info-light p-4 text-info">
                                 <p class="text-xs font-bold uppercase">Paid</p>
-                                <p class="mt-2 text-2xl font-bold">{{ number_format($historyTotals['paid'], 2) }}</p>
+                                <p class="mt-2 text-2xl font-bold"><x-ui.money :amount="$historyTotals['paid']" /></p>
                             </div>
                             <div class="rounded-xl bg-danger-light p-4 text-danger">
                                 <p class="text-xs font-bold uppercase">Debt</p>
-                                <p class="mt-2 text-2xl font-bold">{{ number_format($historyTotals['debt'], 2) }}</p>
+                                <p class="mt-2 text-2xl font-bold"><x-ui.money :amount="$historyTotals['debt']" /></p>
                             </div>
                         </div>
                     </div>
@@ -159,7 +159,7 @@
                                             <p class="text-xs text-gray-500">{{ $sale->items->count() }} item(s)</p>
                                         </td>
                                         <td>{{ $sale->branch?->name ?? '-' }}</td>
-                                        <td>{{ $sale->module?->name ?? '-' }}</td>
+                                        <td>{{ $sale->module_names }}</td>
                                         <td>
                                             <span @class([
                                                 'badge',
@@ -171,15 +171,15 @@
                                                 {{ ucfirst($sale->status) }}
                                             </span>
                                         </td>
-                                        <td>{{ number_format($sale->total, 2) }}</td>
-                                        <td>{{ number_format($sale->paid_amount, 2) }}</td>
+                                        <td><x-ui.money :amount="$sale->total" /></td>
+                                        <td><x-ui.money :amount="$sale->paid_amount" /></td>
                                         <td>
                                             <span @class([
                                                 'font-semibold',
                                                 'text-success' => $sale->remaining_balance <= 0,
                                                 'text-danger' => $sale->remaining_balance > 0,
                                             ])>
-                                                {{ number_format($sale->remaining_balance, 2) }}
+                                                <x-ui.money :amount="$sale->remaining_balance" />
                                             </span>
                                         </td>
                                         <td>{{ $sale->sale_date?->format('M d, Y h:i A') ?? '-' }}</td>

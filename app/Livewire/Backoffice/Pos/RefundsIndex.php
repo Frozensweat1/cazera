@@ -9,32 +9,36 @@ use Livewire\WithPagination;
 
 class RefundsIndex extends Component
 {
-    use WithPagination;
     use HasBranchScope;
+    use WithPagination;
 
     public $search = '';
+
     public $filterBranch = '';
+
     public $filterModule = '';
 
     public function render()
     {
-        $branchId = session('branch_id');
+        $branchId = $this->filterBranch ?: (auth()->user()?->isSuperAdmin() ? null : session('branch_id'));
 
         return view('livewire.backoffice.pos.refunds-index', [
-            'refunds' => Sale::with(['customer', 'module', 'creator'])
+            'refunds' => Sale::with(['customer', 'modules', 'creator'])
+                ->withSum([
+                    'payments as refunded_amount' => fn ($query) => $query->where('status', 'refunded'),
+                ], 'amount')
                 ->accessible()
-                ->where('status', 'refunded')
-                ->when($branchId, fn($query) => $query->where('branch_id', $branchId))
-                ->when($this->filterBranch, fn($query) => $query->where('branch_id', $this->filterBranch))
+                ->whereHas('payments', fn ($query) => $query->where('status', 'refunded'))
+                ->when($branchId, fn ($query) => $query->where('branch_id', $branchId))
                 ->forModule($this->filterModule)
-                ->when($this->search, fn($query) => $query->where(function ($query) {
+                ->when($this->search, fn ($query) => $query->where(function ($query) {
                     $query->where('sale_number', 'like', "%{$this->search}%")
-                        ->orWhereHas('customer', fn($q) => $q->where('name', 'like', "%{$this->search}%"));
+                        ->orWhereHas('customer', fn ($q) => $q->where('name', 'like', "%{$this->search}%"));
                 }))
                 ->latest('sale_date')
                 ->paginate(15),
             'branches' => $this->accessibleBranches(),
-            'modules' => $this->accessibleModules($this->filterBranch ?: $branchId ?: null),
+            'modules' => $this->accessibleModules($branchId ?: null),
         ]);
     }
 

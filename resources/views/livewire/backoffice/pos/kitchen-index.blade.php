@@ -67,7 +67,7 @@
                                 </div>
                                 <p class="mt-2 text-sm text-gray-500">
                                     {{ $order->customer?->name ?? 'Walk-in' }}
-                                    &middot; {{ $order->module?->name ?? 'No module' }}
+                                    &middot; {{ $order->module_names }}
                                     &middot; {{ $order->sale_date?->format('h:i A') ?? $order->created_at?->format('h:i A') }}
                                 </p>
                             </div>

@@ -12,15 +12,14 @@ class AccountingMetrics
     {
         $query = (clone $saleItemsQuery)
             ->join('sales', 'sale_items.sale_id', '=', 'sales.id')
-            ->join('menu_items', 'sale_items.menu_item_id', '=', 'menu_items.id')
             ->whereNotIn('sales.status', ['cancelled', 'refunded'])
-            ->where('menu_items.is_trackable', true);
+            ->where('sale_items.is_trackable', true);
 
         if ($from && $to) {
             $query->whereBetween('sales.sale_date', [$from, $to]);
         }
 
-        return (float) $query->sum(DB::raw('sale_items.qty * COALESCE(menu_items.cost_price, 0)'));
+        return (float) $query->sum(DB::raw('sale_items.qty * COALESCE(sale_items.unit_cost, 0)'));
     }
 
     public static function inventoryHoldingsAtSellingPrice(Builder $inventoryQuery): float

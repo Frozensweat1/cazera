@@ -76,6 +76,7 @@
                         <th>Sale #</th>
                         <th>Date</th>
                         <th>Customer</th>
+                        <th>Modules</th>
                         <th>Status</th>
                         <th>Total</th>
                         <th>Paid</th>
@@ -98,6 +99,7 @@
                             </td>
                             <td>{{ $sale->sale_date->format('Y-m-d H:i') }}</td>
                             <td>{{ $sale->customer?->name ?? 'Walk-in' }}</td>
+                            <td>{{ $sale->module_names }}</td>
                             <td>
                                 @php
                                     $statusClass = match ($sale->status) {
@@ -111,16 +113,21 @@
                                 <span class="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-bold ring-1 {{ $statusClass }}">
                                     {{ ucfirst(str_replace('_', ' ', $sale->status)) }}
                                 </span>
+                                @if ((float) $sale->refunded_amount > 0)
+                                    <div class="mt-1 text-xs font-semibold text-red-600">
+                                        Refunded <x-ui.money :amount="$sale->refunded_amount" />
+                                    </div>
+                                @endif
                             </td>
-                            <td>{{ number_format($sale->total, 2) }}</td>
-                            <td>{{ number_format($sale->paid_amount, 2) }}</td>
+                            <td><x-ui.money :amount="$sale->total" /></td>
+                            <td><x-ui.money :amount="$sale->paid_amount" /></td>
                             <td>
                                 <span @class([
                                     'font-semibold',
                                     'text-amber-600' => (float) $sale->remaining_balance > 0,
                                     'text-emerald-600' => (float) $sale->remaining_balance <= 0,
                                 ])>
-                                    {{ number_format($sale->remaining_balance, 2) }}
+                                    <x-ui.money :amount="$sale->remaining_balance" />
                                 </span>
                             </td>
                             <td class="text-center">
@@ -142,7 +149,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="8" class="text-center py-10 text-gray-500">No sales found.</td>
+                            <td colspan="9" class="text-center py-10 text-gray-500">No sales found.</td>
                         </tr>
                     @endforelse
                 </tbody>
@@ -157,7 +164,7 @@
                 <div class="space-y-4">
                     <div class="rounded-lg border border-slate-200 bg-slate-50 p-4">
                         <p class="font-semibold">{{ $paymentSale->sale_number }}</p>
-                        <p class="text-sm text-gray-500">Outstanding: {{ number_format($paymentSale->remaining_balance, 2) }}</p>
+                        <p class="text-sm text-gray-500">Outstanding: <x-ui.money :amount="$paymentSale->remaining_balance" /></p>
                     </div>
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <x-ui.select label="Method" name="payment_method" wire:model="payment_method">
@@ -167,8 +174,8 @@
                             <option value="bank_transfer">Bank transfer</option>
                             <option value="wallet">Wallet</option>
                         </x-ui.select>
-                        <x-ui.input label="Amount" type="number" name="payment_amount" wire:model="payment_amount" min="0" step="0.01" />
-                        <x-ui.input label="Reference" name="payment_reference" wire:model="payment_reference" />
+                        <x-ui.input label="Amount (GHS)" type="number" name="payment_amount" wire:model.change="payment_amount" min="0.01" step="0.01" />
+                        <x-ui.input label="Reference" name="payment_reference" wire:model.blur="payment_reference" />
                     </div>
                 </div>
             @endif
@@ -186,7 +193,7 @@
                 <div class="space-y-4">
                     <div class="rounded-lg border border-red-100 bg-red-50 p-4">
                         <p class="font-semibold text-red-700">{{ $refundSale->sale_number }}</p>
-                        <p class="text-sm text-red-600">Paid amount: {{ number_format($refundSale->paid_amount, 2) }}</p>
+                        <p class="text-sm text-red-600">Paid amount: <x-ui.money :amount="$refundSale->paid_amount" /></p>
                     </div>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <x-ui.select label="Refund Method" name="refund_method" wire:model="refund_method">
@@ -196,9 +203,9 @@
                             <option value="bank_transfer">Bank transfer</option>
                             <option value="wallet">Wallet</option>
                         </x-ui.select>
-                        <x-ui.input label="Refund Amount" type="number" name="refund_amount" wire:model="refund_amount" min="0" step="0.01" />
+                        <x-ui.input label="Refund Amount (GHS)" type="number" name="refund_amount" wire:model.change="refund_amount" min="0.01" step="0.01" />
                     </div>
-                    <x-ui.textarea label="Reason" name="refund_reason" wire:model="refund_reason" />
+                    <x-ui.textarea label="Reason" name="refund_reason" wire:model.blur="refund_reason" />
                 </div>
             @endif
             <x-slot:footer>
@@ -225,7 +232,7 @@
                         @if ($receiptSettings['whatsapp'])
                             <p class="text-xs text-gray-500">WhatsApp: {{ $receiptSettings['whatsapp'] }}</p>
                         @endif
-                        <p class="mt-2 text-sm text-gray-500">{{ $receiptSale->module?->name }} POS Receipt</p>
+                        <p class="mt-2 text-sm text-gray-500">{{ $receiptSale->module_names }} POS Receipt</p>
                         <p class="mt-2 text-sm font-semibold">{{ $receiptSale->sale_number }}</p>
                         <p class="text-xs text-gray-500">{{ $receiptSale->sale_date?->format('M d, Y h:i A') }}</p>
                     </div>
@@ -255,33 +262,38 @@
                                 <tr class="border-b border-slate-100">
                                     <td class="py-2">{{ $item->item_name }}</td>
                                     <td class="py-2 text-center">{{ number_format($item->qty, 0) }}</td>
-                                    <td class="py-2 text-right">{{ number_format($item->unit_price, 2) }}</td>
-                                    <td class="py-2 text-right">{{ number_format($item->total, 2) }}</td>
+                                    <td class="py-2 text-right"><x-ui.money :amount="$item->unit_price" /></td>
+                                    <td class="py-2 text-right"><x-ui.money :amount="$item->total" /></td>
                                 </tr>
                             @endforeach
                         </tbody>
                     </table>
 
                     <div class="space-y-2 border-b border-dashed border-slate-300 pb-4 text-sm">
-                        <div class="flex justify-between"><span>Subtotal</span><span>{{ number_format($receiptSale->subtotal, 2) }}</span></div>
-                        <div class="flex justify-between"><span>Tax</span><span>{{ number_format($receiptSale->tax, 2) }}</span></div>
-                        <div class="flex justify-between"><span>Service Charge</span><span>{{ number_format($receiptSale->service_charge, 2) }}</span></div>
-                        <div class="flex justify-between"><span>Discount</span><span>{{ number_format($receiptSale->discount, 2) }}</span></div>
-                        <div class="flex justify-between text-base font-extrabold"><span>Total</span><span>{{ number_format($receiptSale->total, 2) }}</span></div>
-                        <div class="flex justify-between"><span>Paid</span><span>{{ number_format($receiptSale->paid_amount, 2) }}</span></div>
-                        <div class="flex justify-between"><span>Balance</span><span>{{ number_format($receiptSale->remaining_balance, 2) }}</span></div>
+                        <div class="flex justify-between"><span>Subtotal</span><span><x-ui.money :amount="$receiptSale->subtotal" /></span></div>
+                        <div class="flex justify-between"><span>Tax</span><span><x-ui.money :amount="$receiptSale->tax" /></span></div>
+                        <div class="flex justify-between"><span>Service Charge</span><span><x-ui.money :amount="$receiptSale->service_charge" /></span></div>
+                        <div class="flex justify-between"><span>Discount</span><span><x-ui.money :amount="$receiptSale->discount" /></span></div>
+                        <div class="flex justify-between text-base font-extrabold"><span>Total</span><span><x-ui.money :amount="$receiptSale->total" /></span></div>
+                        @if ((float) $receiptSale->refunded_amount > 0)
+                            <div class="flex justify-between text-red-700"><span>Refunded</span><span>-<x-ui.money :amount="$receiptSale->refunded_amount" /></span></div>
+                        @endif
+                        <div class="flex justify-between"><span>Paid</span><span><x-ui.money :amount="$receiptSale->paid_amount" /></span></div>
+                        <div class="flex justify-between"><span>Balance</span><span><x-ui.money :amount="$receiptSale->remaining_balance" /></span></div>
                     </div>
 
                     <div class="space-y-2 text-sm">
                         <p class="font-semibold">Payments</p>
                         @forelse ($receiptSale->payments as $payment)
                             <div class="flex justify-between gap-4">
-                                <span>{{ ucfirst(str_replace('_', ' ', $payment->method)) }}
+                                <span>{{ $payment->status === 'refunded' ? 'Refund' : ucfirst(str_replace('_', ' ', $payment->method)) }}
                                     @if ($payment->transaction_reference)
                                         <span class="text-gray-400">({{ $payment->transaction_reference }})</span>
                                     @endif
                                 </span>
-                                <span>{{ number_format($payment->amount, 2) }}</span>
+                                <span @class(['text-red-700' => $payment->status === 'refunded'])>
+                                    {{ $payment->status === 'refunded' ? '-' : '' }}<x-ui.money :amount="$payment->amount" />
+                                </span>
                             </div>
                         @empty
                             <p class="text-gray-500">No payment recorded.</p>

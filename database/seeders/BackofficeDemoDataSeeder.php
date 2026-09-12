@@ -5,6 +5,7 @@ namespace Database\Seeders;
 use App\Models\Branch;
 use App\Models\CashRegister;
 use App\Models\Category;
+use App\Models\Customer;
 use App\Models\DailyProductionCost;
 use App\Models\Expense;
 use App\Models\ExpenseCategory;
@@ -16,7 +17,6 @@ use App\Models\Module;
 use App\Models\Payment;
 use App\Models\Sale;
 use App\Models\SaleItem;
-use App\Models\Customer;
 use App\Models\Supplier;
 use App\Models\User;
 use Carbon\Carbon;
@@ -277,6 +277,8 @@ class BackofficeDemoDataSeeder extends Seeder
                     'sku' => $menuItem->slug,
                     'qty' => $item['qty'],
                     'unit_price' => $menuItem->price,
+                    'unit_cost' => $menuItem->cost_price ?? 0,
+                    'is_trackable' => $menuItem->is_trackable,
                     'tax' => 0.00,
                     'discount' => 0.00,
                     'subtotal' => $subtotal,
@@ -307,6 +309,7 @@ class BackofficeDemoDataSeeder extends Seeder
                 'service_charge' => $serviceCharge,
                 'total' => $total,
                 'paid_amount' => $paidAmount,
+                'refunded_amount' => 0.00,
                 'remaining_balance' => 0.00,
                 'is_debt' => false,
                 'sale_date' => $saleData['sale_date'],
@@ -333,9 +336,9 @@ class BackofficeDemoDataSeeder extends Seeder
                 'cash_register_id' => $cashRegister->id,
                 'received_by' => $adminUser->id,
                 'amount' => $paidAmount,
-                'transaction_reference' => 'TXN-' . $sale->sale_number,
+                'transaction_reference' => 'TXN-'.$sale->sale_number,
                 'status' => 'completed',
-                'notes' => 'Seeded payment for ' . $sale->sale_number,
+                'notes' => 'Seeded payment for '.$sale->sale_number,
                 'paid_at' => $saleData['sale_date']->copy()->addMinutes(10),
             ]);
         }
@@ -375,7 +378,7 @@ class BackofficeDemoDataSeeder extends Seeder
                 'module_id' => $restaurantModule->id,
                 'recorded_by' => $adminUser->id,
                 'amount' => $expense['amount'],
-                'notes' => 'Seed data expense for ' . $expense['title'],
+                'notes' => 'Seed data expense for '.$expense['title'],
                 'is_locked' => false,
             ]);
         });

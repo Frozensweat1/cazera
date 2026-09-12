@@ -13,6 +13,7 @@ use App\Models\ContactMessage;
 use App\Models\Customer;
 use App\Models\CustomerDebt;
 use App\Models\DailyProductionCost;
+use App\Models\Discount;
 use App\Models\Expense;
 use App\Models\ExpenseCategory;
 use App\Models\GalleryItem;
@@ -33,16 +34,18 @@ use App\Models\Review;
 use App\Models\Sale;
 use App\Models\SaleItem;
 use App\Models\Supplier;
+use App\Models\Tax;
 use App\Models\Testimonial;
 use App\Models\User;
 use App\Models\WebsiteEvent;
 use App\Models\WebsitePage;
 use App\Models\WebsiteSetting;
 use App\Observers\AuditableObserver;
+use App\Observers\PosCacheObserver;
 use App\Support\AuditLogger;
-use Illuminate\Support\Collection;
 use Illuminate\Auth\Events\Login;
 use Illuminate\Auth\Events\Logout;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\View;
@@ -64,6 +67,7 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->registerAuditObservers();
+        $this->registerPosCacheObservers();
         $this->registerActivityListeners();
 
         View::composer(['components.layouts.*', 'components.layout.*'], function ($view) {
@@ -72,7 +76,7 @@ class AppServiceProvider extends ServiceProvider
                 ? ($user
                     ? $user->accessibleBranches()->get()
                     : Branch::where('is_active', true)->orderBy('id')->get())
-                : new Collection();
+                : new Collection;
 
             $currentBranch = null;
             $branchId = session('branch_id');
@@ -81,7 +85,7 @@ class AppServiceProvider extends ServiceProvider
                 $currentBranch = Branch::find($branchId);
             }
 
-            if (!$currentBranch && $branches->isNotEmpty()) {
+            if (! $currentBranch && $branches->isNotEmpty()) {
                 $currentBranch = $branches->first();
                 session(['branch_id' => $currentBranch->id]);
             }
@@ -134,6 +138,13 @@ class AppServiceProvider extends ServiceProvider
             WebsiteSetting::class,
         ] as $model) {
             $model::observe(AuditableObserver::class);
+        }
+    }
+
+    private function registerPosCacheObservers(): void
+    {
+        foreach ([Tax::class, Discount::class, WebsiteSetting::class, Module::class, ModuleStaff::class, BranchStaff::class] as $model) {
+            $model::observe(PosCacheObserver::class);
         }
     }
 

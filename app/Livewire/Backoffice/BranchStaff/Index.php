@@ -5,22 +5,29 @@ namespace App\Livewire\Backoffice\BranchStaff;
 use App\Livewire\Concerns\HasBranchScope;
 use App\Models\BranchStaff;
 use App\Models\User;
+use App\Support\PosCache;
 use Illuminate\Support\Facades\DB;
+use Jantinnerezo\LivewireAlert\Facades\LivewireAlert;
 use Livewire\Component;
 use Livewire\WithPagination;
-use Jantinnerezo\LivewireAlert\Facades\LivewireAlert;
 
 class Index extends Component
 {
-    use WithPagination;
     use HasBranchScope;
+    use WithPagination;
 
     public $assignmentId;
+
     public $user_id;
+
     public array $branch_ids = [];
+
     public $is_active = true;
+
     public $search = '';
+
     public $filterBranch = '';
+
     public $selected = [];
 
     protected function rules()
@@ -44,16 +51,14 @@ class Index extends Component
                 ->whereIn('branch_id', $this->accessibleBranches()->pluck('id'))
                 ->when(
                     $this->search,
-                    fn($query) =>
-                    $query->whereHas('user', function ($q) {
-                        $q->where('name', 'like', '%' . $this->search . '%')
-                            ->orWhere('email', 'like', '%' . $this->search . '%');
+                    fn ($query) => $query->whereHas('user', function ($q) {
+                        $q->where('name', 'like', '%'.$this->search.'%')
+                            ->orWhere('email', 'like', '%'.$this->search.'%');
                     })
                 )
                 ->when(
                     $this->filterBranch,
-                    fn($query) =>
-                    $query->where('branch_id', $this->filterBranch)
+                    fn ($query) => $query->where('branch_id', $this->filterBranch)
                 )
                 ->latest()
                 ->paginate(10),
@@ -103,6 +108,7 @@ class Index extends Component
 
         if ($branchIds->isEmpty()) {
             $this->addError('branch_ids', 'Please select at least one branch.');
+
             return;
         }
 
@@ -114,11 +120,13 @@ class Index extends Component
 
         if ($selectedUser->isSuperAdmin()) {
             $this->addError('user_id', 'Super Admin users do not require branch assignments.');
+
             return;
         }
 
         if (! auth()->user()?->isSuperAdmin() && $selectedUser->isBranchManager()) {
             $this->addError('user_id', 'Only Super Admin users can assign Branch Manager users to branches.');
+
             return;
         }
 
@@ -177,7 +185,7 @@ class Index extends Component
         $this->dispatch('close-modal', 'branch-staff-form');
 
         LivewireAlert::title('Assignment Saved')
-            ->text($branchIds->count() . ' branch assignment' . ($branchIds->count() === 1 ? '' : 's') . ' saved successfully.')
+            ->text($branchIds->count().' branch assignment'.($branchIds->count() === 1 ? '' : 's').' saved successfully.')
             ->success()
             ->show();
 
@@ -213,10 +221,11 @@ class Index extends Component
                 ->text('Please select assignments.')
                 ->warning()
                 ->show();
+
             return;
         }
         LivewireAlert::title('Bulk Delete')
-            ->text('Are you sure you want to delete ' . count($this->selected) . ' assignments?')
+            ->text('Are you sure you want to delete '.count($this->selected).' assignments?')
             ->asConfirm()
             ->onConfirm('bulkDelete')
             ->show();
@@ -225,13 +234,16 @@ class Index extends Component
     public function bulkDelete()
     {
         $count = count($this->selected);
-        BranchStaff::whereIn('id', $this->selected)
-            ->whereIn('branch_id', $this->accessibleBranches()->pluck('id'))
-            ->delete();
+        $query = BranchStaff::whereIn('id', $this->selected)
+            ->whereIn('branch_id', $this->accessibleBranches()->pluck('id'));
+        $branchIds = (clone $query)->pluck('branch_id')->unique();
+
+        $query->delete();
+        $branchIds->each(fn ($branchId) => PosCache::invalidateModuleAccess((int) $branchId));
         $this->selected = [];
 
         LivewireAlert::title('Bulk Delete Complete')
-            ->text($count . ' assignments deleted.')
+            ->text($count.' assignments deleted.')
             ->success()
             ->show();
     }

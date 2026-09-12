@@ -6,21 +6,24 @@ use App\Livewire\Concerns\HasBranchScope;
 use App\Models\Sale;
 use App\Models\SaleItem;
 use App\Support\SaleTableRelease;
-use Jantinnerezo\LivewireAlert\Facades\LivewireAlert;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Jantinnerezo\LivewireAlert\Facades\LivewireAlert;
 use Livewire\Component;
 use Livewire\WithPagination;
-use Illuminate\Support\Facades\Log;
 use Throwable;
 
 class KitchenIndex extends Component
 {
-    use WithPagination;
     use HasBranchScope;
+    use WithPagination;
 
     public $filterBranch = '';
+
     public $filterModule = '';
+
     public $filterStatus = '';
+
     public $showCompleted = false;
 
     public function render()
@@ -30,21 +33,21 @@ class KitchenIndex extends Component
 
         $kitchenItemScope = function ($query) {
             $query->where('is_kitchen_notified', true)
-                ->when(!$this->showCompleted, fn($query) => $query->where('kitchen_status', '!=', 'completed'))
-                ->when($this->filterModule, fn($query) => $query->where('module_id', $this->filterModule))
-                ->when($this->filterStatus, fn($query) => $query->where('kitchen_status', $this->filterStatus));
+                ->when(! $this->showCompleted, fn ($query) => $query->where('kitchen_status', '!=', 'completed'))
+                ->when($this->filterModule, fn ($query) => $query->where('module_id', $this->filterModule))
+                ->when($this->filterStatus, fn ($query) => $query->where('kitchen_status', $this->filterStatus));
         };
 
         $kitchenOrders = Sale::with([
-                'customer',
-                'branch',
-                'module',
-                'items' => fn($query) => $kitchenItemScope($query->with('menuItem')->oldest('created_at')),
-            ])
+            'customer',
+            'branch',
+            'modules',
+            'items' => fn ($query) => $kitchenItemScope($query->with('menuItem')->oldest('created_at')),
+        ])
             ->accessible()
             ->whereHas('items', $kitchenItemScope)
-            ->when($selectedBranchId, fn($query) => $query->where('branch_id', $selectedBranchId))
-            ->when($this->filterBranch, fn($query) => $query->where('branch_id', $this->filterBranch))
+            ->when($selectedBranchId, fn ($query) => $query->where('branch_id', $selectedBranchId))
+            ->when($this->filterBranch, fn ($query) => $query->where('branch_id', $this->filterBranch))
             ->forModule($this->filterModule)
             ->oldest('sale_date')
             ->paginate(12);
@@ -80,45 +83,45 @@ class KitchenIndex extends Component
     public function markAs(int $saleItemId, string $status)
     {
         try {
-        $allowed = ['queued', 'cooking', 'ready', 'completed'];
+            $allowed = ['queued', 'cooking', 'ready', 'completed'];
 
-        if (! in_array($status, $allowed, true)) {
-            return;
-        }
+            if (! in_array($status, $allowed, true)) {
+                return;
+            }
 
-        $item = SaleItem::accessible()
-            ->with('sale')
-            ->where('is_kitchen_notified', true)
-            ->findOrFail($saleItemId);
+            $item = SaleItem::accessible()
+                ->with('sale')
+                ->where('is_kitchen_notified', true)
+                ->findOrFail($saleItemId);
 
-        $itemStatus = match ($status) {
-            'cooking' => 'preparing',
-            'ready' => 'ready',
-            'completed' => 'served',
-            default => 'pending',
-        };
+            $itemStatus = match ($status) {
+                'cooking' => 'preparing',
+                'ready' => 'ready',
+                'completed' => 'served',
+                default => 'pending',
+            };
 
-        $item->update([
-            'status' => $itemStatus,
-            'kitchen_status' => $status,
-            'prepared_at' => in_array($status, ['ready', 'completed'], true)
-                ? $item->prepared_at ?? now()
-                : $item->prepared_at,
-            'served_at' => $status === 'completed'
-                ? $item->served_at ?? now()
-                : $item->served_at,
-            'kitchen_started_at' => in_array($status, ['cooking', 'ready', 'completed'], true)
-                ? $item->kitchen_started_at ?? now()
-                : $item->kitchen_started_at,
-            'kitchen_completed_at' => $status === 'completed'
-                ? now()
-                : $item->kitchen_completed_at,
-        ]);
+            $item->update([
+                'status' => $itemStatus,
+                'kitchen_status' => $status,
+                'prepared_at' => in_array($status, ['ready', 'completed'], true)
+                    ? $item->prepared_at ?? now()
+                    : $item->prepared_at,
+                'served_at' => $status === 'completed'
+                    ? $item->served_at ?? now()
+                    : $item->served_at,
+                'kitchen_started_at' => in_array($status, ['cooking', 'ready', 'completed'], true)
+                    ? $item->kitchen_started_at ?? now()
+                    : $item->kitchen_started_at,
+                'kitchen_completed_at' => $status === 'completed'
+                    ? now()
+                    : $item->kitchen_completed_at,
+            ]);
 
             $this->updateSaleKitchenStatus($item->sale);
 
             LivewireAlert::title('Kitchen Updated')
-                ->text('Kitchen status updated to ' . ucfirst($status) . '.')
+                ->text('Kitchen status updated to '.ucfirst($status).'.')
                 ->success()
                 ->show();
         } catch (Throwable $e) {
@@ -133,12 +136,12 @@ class KitchenIndex extends Component
     protected function updateSaleKitchenStatus(Sale $sale): void
     {
         try {
-        $items = $sale->items()->where('is_kitchen_notified', true);
-        $statuses = (clone $items)->pluck('kitchen_status')->unique()->toArray();
+            $items = $sale->items()->where('is_kitchen_notified', true);
+            $statuses = (clone $items)->pluck('kitchen_status')->unique()->toArray();
 
-        if (! (clone $items)->exists()) {
-            return;
-        }
+            if (! (clone $items)->exists()) {
+                return;
+            }
 
             if (count($statuses) === 1 && $statuses[0] === 'completed') {
                 $sale->update([
@@ -248,6 +251,6 @@ class KitchenIndex extends Component
             return asset(ltrim($path, '/'));
         }
 
-        return asset('storage/' . ltrim($path, '/'));
+        return asset('storage/'.ltrim($path, '/'));
     }
 }

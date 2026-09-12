@@ -51,7 +51,7 @@
                             <td>{{ $expense->title }}</td>
                             <td>{{ $expense->category?->name }}</td>
                             <td>{{ $expense->expense_date->format('Y-m-d') }}</td>
-                            <td>{{ number_format($expense->amount, 2) }}</td>
+                            <td><x-ui.money :amount="$expense->amount" /></td>
                             <td>{{ $expense->branch?->name }}</td>
                             <td>{{ $expense->module?->name }}</td>
                             <td class="text-center">

@@ -42,12 +42,12 @@
             </div>
             <div class="panel">
                 <p class="text-sm text-gray-500">Expected</p>
-                <p class="mt-2 text-2xl font-extrabold text-gray-950">{{ number_format($summary['expected_total'], 2) }}</p>
+                <p class="mt-2 text-2xl font-extrabold text-gray-950"><x-ui.money :amount="$summary['expected_total']" /></p>
                 <p class="text-xs text-gray-500">Sales plus cash-ins less refunds</p>
             </div>
             <div class="panel">
                 <p class="text-sm text-gray-500">Actual Received</p>
-                <p class="mt-2 text-2xl font-extrabold text-gray-950">{{ number_format($summary['actual_total'], 2) }}</p>
+                <p class="mt-2 text-2xl font-extrabold text-gray-950"><x-ui.money :amount="$summary['actual_total']" /></p>
                 <p class="text-xs text-gray-500">Closed registers only</p>
             </div>
             <div class="panel">
@@ -57,13 +57,13 @@
                     'text-emerald-700' => $summary['difference_total'] > 0,
                     'text-red-700' => $summary['difference_total'] < 0,
                     'text-gray-950' => $summary['difference_total'] == 0,
-                ])>{{ number_format($summary['difference_total'], 2) }}</p>
+                ])><x-ui.money :amount="$summary['difference_total']" /></p>
                 <p class="text-xs text-gray-500">Actual minus expected</p>
             </div>
             <div class="panel">
                 <p class="text-sm text-gray-500">Sales / Refunds</p>
-                <p class="mt-2 text-2xl font-extrabold text-gray-950">{{ number_format($summary['sale_collections'], 2) }}</p>
-                <p class="text-xs text-gray-500">Refunds: {{ number_format($summary['refunds'], 2) }}</p>
+                <p class="mt-2 text-2xl font-extrabold text-gray-950"><x-ui.money :amount="$summary['sale_collections']" /></p>
+                <p class="text-xs text-gray-500">Refunds: <x-ui.money :amount="$summary['refunds']" /></p>
             </div>
         </div>
 
@@ -117,11 +117,17 @@
                         <div class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
                             <div class="rounded-lg bg-slate-50 p-3">
                                 <p class="text-xs text-gray-500">Expected</p>
-                                <p class="mt-1 font-extrabold text-gray-950">{{ number_format($expected, 2) }}</p>
+                                <p class="mt-1 font-extrabold text-gray-950"><x-ui.money :amount="$expected" /></p>
                             </div>
                             <div class="rounded-lg bg-slate-50 p-3">
                                 <p class="text-xs text-gray-500">Actual</p>
-                                <p class="mt-1 font-extrabold text-gray-950">{{ $register->is_open ? 'Pending' : number_format($actual, 2) }}</p>
+                                <p class="mt-1 font-extrabold text-gray-950">
+                                    @if ($register->is_open)
+                                        Pending
+                                    @else
+                                        <x-ui.money :amount="$actual" />
+                                    @endif
+                                </p>
                             </div>
                             <div class="rounded-lg bg-slate-50 p-3">
                                 <p class="text-xs text-gray-500">Difference</p>
@@ -130,7 +136,13 @@
                                     'text-emerald-700' => ! $register->is_open && $difference > 0,
                                     'text-red-700' => ! $register->is_open && $difference < 0,
                                     'text-gray-950' => $register->is_open || $difference == 0,
-                                ])>{{ $register->is_open ? 'Pending' : number_format($difference, 2) }}</p>
+                                ])>
+                                    @if ($register->is_open)
+                                        Pending
+                                    @else
+                                        <x-ui.money :amount="$difference" />
+                                    @endif
+                                </p>
                             </div>
                         </div>
                     </div>
@@ -178,7 +190,7 @@
                                 'font-semibold',
                                 'text-red-700' => (float) $transaction->amount < 0,
                                 'text-gray-950' => (float) $transaction->amount >= 0,
-                            ])>{{ number_format($transaction->amount, 2) }}</td>
+                            ])><x-ui.money :amount="$transaction->amount" /></td>
                             <td>{{ $transaction->cashRegister?->name ?? 'Unknown' }}</td>
                             <td>{{ $transaction->branch?->name }}</td>
                             <td>{{ $transaction->module?->name }}</td>
@@ -206,7 +218,7 @@
                         <div class="mt-4 grid grid-cols-2 gap-3">
                             <div>
                                 <p class="text-xs uppercase tracking-wide text-gray-500">Expected</p>
-                                <p class="text-xl font-extrabold text-gray-950">{{ number_format($closingRegister->computed_expected_collection, 2) }}</p>
+                                <p class="text-xl font-extrabold text-gray-950"><x-ui.money :amount="$closingRegister->computed_expected_collection" /></p>
                                 <p class="mt-1 text-xs text-gray-500">Sales, refunds, cash-ins, and opening balance entries count toward expected collection.</p>
                             </div>
                             <div>
@@ -216,8 +228,8 @@
                         </div>
                     </div>
 
-                    <x-ui.input label="Actual Cash Received" type="number" name="actual_balance" wire:model="actual_balance" min="0" step="0.01" />
-                    <x-ui.textarea label="Closing Notes" name="closing_notes" wire:model="closing_notes" placeholder="Optional handover notes, shortage reason, or overage details." />
+                    <x-ui.input label="Actual Cash Received (GHS)" type="number" name="actual_balance" wire:model.change="actual_balance" min="0" step="0.01" />
+                    <x-ui.textarea label="Closing Notes" name="closing_notes" wire:model.blur="closing_notes" placeholder="Optional handover notes, shortage reason, or overage details." />
                 </div>
             @endif
 

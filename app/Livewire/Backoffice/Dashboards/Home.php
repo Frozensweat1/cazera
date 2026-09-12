@@ -18,21 +18,37 @@ class Home extends Component
     use HasDashboardFilters;
 
     public float $grossSales = 0.0;
+
     public float $collectedSales = 0.0;
+
     public float $outstandingDebt = 0.0;
+
     public float $averageTicket = 0.0;
+
     public int $totalOrders = 0;
+
     public int $completedOrders = 0;
+
     public int $openOrders = 0;
+
     public int $refundCount = 0;
+
     public array $salesLabels = [];
+
     public array $salesSeries = [];
+
     public array $ordersSeries = [];
+
     public array $categoryLabels = [];
+
     public array $categorySeries = [];
+
     public array $paymentLabels = [];
+
     public array $paymentSeries = [];
+
     public array $topItems = [];
+
     public array $recentSales = [];
 
     public function mount(): void
@@ -131,7 +147,7 @@ class Home extends Component
             ->toArray();
 
         $this->recentSales = (clone $salesQuery)
-            ->with(['customer', 'branch', 'module'])
+            ->with(['customer', 'branch', 'modules'])
             ->latest('sale_date')
             ->limit(8)
             ->get()
@@ -139,7 +155,7 @@ class Home extends Component
                 'sale_number' => $sale->sale_number,
                 'customer' => $sale->customer?->name ?: 'Walk-in customer',
                 'branch' => $sale->branch?->name ?: 'Branch',
-                'module' => $sale->module?->name ?: 'Module',
+                'module' => $sale->module_names,
                 'status' => $sale->status,
                 'total' => (float) $sale->total,
                 'paid' => (float) $sale->paid_amount,

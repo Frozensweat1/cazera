@@ -92,14 +92,14 @@
                             </td>
 
                             <td>
-                                {{ number_format($customer->total_spent, 2) }}
+                                <x-ui.money :amount="$customer->total_spent" />
                             </td>
 
                             <td>
 
                                 @if ($customer->total_debt > 0)
                                     <span class="text-danger font-semibold">
-                                        {{ number_format($customer->total_debt, 2) }}
+                                        <x-ui.money :amount="$customer->total_debt" />
                                     </span>
                                 @else
                                     <span class="text-success">

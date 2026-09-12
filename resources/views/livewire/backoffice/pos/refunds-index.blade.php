@@ -30,7 +30,8 @@
                         <th>Sale #</th>
                         <th>Date</th>
                         <th>Customer</th>
-                        <th>Total</th>
+                        <th>Refunded</th>
+                        <th>Type</th>
                         <th>Branch</th>
                         <th>Module</th>
                     </tr>
@@ -41,13 +42,14 @@
                             <td>{{ $refund->sale_number }}</td>
                             <td>{{ $refund->sale_date->format('Y-m-d H:i') }}</td>
                             <td>{{ $refund->customer?->name ?? 'Walk-in' }}</td>
-                            <td>{{ number_format($refund->total, 2) }}</td>
+                            <td><x-ui.money :amount="$refund->refunded_amount" /></td>
+                            <td>{{ $refund->status === 'refunded' ? 'Full refund' : 'Partial refund' }}</td>
                             <td>{{ $refund->branch?->name }}</td>
-                            <td>{{ $refund->module?->name }}</td>
+                            <td>{{ $refund->module_names }}</td>
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="6" class="text-center py-10 text-gray-500">No refunds found.</td>
+                            <td colspan="7" class="text-center py-10 text-gray-500">No refunds found.</td>
                         </tr>
                     @endforelse
                 </tbody>

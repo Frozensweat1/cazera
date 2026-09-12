@@ -3,18 +3,17 @@
 namespace App\Livewire\Backoffice\Reports;
 
 use App\Livewire\Concerns\HasBranchScope;
+use App\Models\CashRegisterTransaction;
 use App\Models\DailyProductionCost;
 use App\Models\Expense;
 use App\Models\MaintenanceRequest;
 use App\Models\Module;
 use App\Models\Sale;
-use App\Models\CashRegisterTransaction;
 use App\Models\SaleItem;
 use App\Support\AccountingMetrics;
 use App\Support\SaleModuleAllocation;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\DB;
 use Livewire\Component;
 
 class FinanceReport extends Component
@@ -22,8 +21,11 @@ class FinanceReport extends Component
     use HasBranchScope;
 
     public $filterBranch = '';
+
     public $filterModule = '';
+
     public $dateFrom = '';
+
     public $dateTo = '';
 
     public function mount(): void
@@ -39,24 +41,24 @@ class FinanceReport extends Component
         $endDate = Carbon::parse($this->dateTo ?: now()->toDateString())->endOfDay();
 
         $sales = Sale::accessible()
-            ->when($branchId, fn($query) => $query->where('branch_id', $branchId))
+            ->when($branchId, fn ($query) => $query->where('branch_id', $branchId))
             ->forModule($this->filterModule)
             ->whereNotIn('status', ['cancelled', 'refunded'])
             ->whereBetween('sale_date', [$startDate, $endDate]);
 
         $expenses = Expense::accessible()
-            ->when($branchId, fn($query) => $query->where('branch_id', $branchId))
-            ->when($this->filterModule, fn($query) => $query->where('module_id', $this->filterModule))
+            ->when($branchId, fn ($query) => $query->where('branch_id', $branchId))
+            ->when($this->filterModule, fn ($query) => $query->where('module_id', $this->filterModule))
             ->whereBetween('expense_date', [$startDate->toDateString(), $endDate->toDateString()]);
 
         $productionCosts = DailyProductionCost::accessible()
-            ->when($branchId, fn($query) => $query->where('branch_id', $branchId))
-            ->when($this->filterModule, fn($query) => $query->where('module_id', $this->filterModule))
+            ->when($branchId, fn ($query) => $query->where('branch_id', $branchId))
+            ->when($this->filterModule, fn ($query) => $query->where('module_id', $this->filterModule))
             ->whereBetween('production_date', [$startDate->toDateString(), $endDate->toDateString()]);
 
         $maintenance = MaintenanceRequest::accessible()
-            ->when($branchId, fn($query) => $query->where('branch_id', $branchId))
-            ->when($this->filterModule, fn($query) => $query->where('module_id', $this->filterModule))
+            ->when($branchId, fn ($query) => $query->where('branch_id', $branchId))
+            ->when($this->filterModule, fn ($query) => $query->where('module_id', $this->filterModule))
             ->whereBetween('requested_date', [$startDate, $endDate]);
 
         $revenue = SaleModuleAllocation::sum($sales, 'total', $this->filterModule);
@@ -66,14 +68,14 @@ class FinanceReport extends Component
         $maintenanceActualCost = (clone $maintenance)->sum('actual_cost');
         $trackableItemCost = AccountingMetrics::soldTrackableMenuItemCost(
             SaleItem::accessible()
-                ->when($branchId, fn($query) => $query->where('sale_items.branch_id', $branchId))
-                ->when($this->filterModule, fn($query) => $query->where('sale_items.module_id', $this->filterModule)),
+                ->when($branchId, fn ($query) => $query->where('sale_items.branch_id', $branchId))
+                ->when($this->filterModule, fn ($query) => $query->where('sale_items.module_id', $this->filterModule)),
             $startDate,
             $endDate
         );
         $refunds = abs((float) CashRegisterTransaction::accessible()
-            ->when($branchId, fn($query) => $query->where('branch_id', $branchId))
-            ->when($this->filterModule, fn($query) => $query->where('module_id', $this->filterModule))
+            ->when($branchId, fn ($query) => $query->where('branch_id', $branchId))
+            ->when($this->filterModule, fn ($query) => $query->where('module_id', $this->filterModule))
             ->where('type', 'refund')
             ->whereBetween('transaction_date', [$startDate, $endDate])
             ->sum('amount'));
@@ -136,31 +138,30 @@ class FinanceReport extends Component
 
         $modules = Module::query()->whereIn('id', $sales->flatMap->items->pluck('module_id')->filter()->unique())->get()->keyBy('id');
         $productionCosts = DailyProductionCost::accessible()
-            ->when($branchId, fn($query) => $query->where('branch_id', $branchId))
+            ->when($branchId, fn ($query) => $query->where('branch_id', $branchId))
             ->whereBetween('production_date', [$startDate->toDateString(), $endDate->toDateString()])
             ->selectRaw('module_id, sum(amount) as total_amount')
             ->groupBy('module_id')
             ->pluck('total_amount', 'module_id');
         $expenseCosts = Expense::accessible()
-            ->when($branchId, fn($query) => $query->where('branch_id', $branchId))
+            ->when($branchId, fn ($query) => $query->where('branch_id', $branchId))
             ->whereBetween('expense_date', [$startDate->toDateString(), $endDate->toDateString()])
             ->selectRaw('module_id, sum(amount) as total_amount')
             ->groupBy('module_id')
             ->pluck('total_amount', 'module_id');
         $maintenanceCosts = MaintenanceRequest::accessible()
-            ->when($branchId, fn($query) => $query->where('branch_id', $branchId))
+            ->when($branchId, fn ($query) => $query->where('branch_id', $branchId))
             ->whereBetween('requested_date', [$startDate, $endDate])
             ->selectRaw('module_id, sum(actual_cost) as total_amount')
             ->groupBy('module_id')
             ->pluck('total_amount', 'module_id');
         $trackableItemCosts = SaleItem::accessible()
-            ->when($branchId, fn($query) => $query->where('sale_items.branch_id', $branchId))
+            ->when($branchId, fn ($query) => $query->where('sale_items.branch_id', $branchId))
             ->join('sales', 'sale_items.sale_id', '=', 'sales.id')
-            ->join('menu_items', 'sale_items.menu_item_id', '=', 'menu_items.id')
             ->whereBetween('sales.sale_date', [$startDate, $endDate])
             ->whereNotIn('sales.status', ['cancelled', 'refunded'])
-            ->where('menu_items.is_trackable', true)
-            ->selectRaw('sale_items.module_id, sum(sale_items.qty * COALESCE(menu_items.cost_price, 0)) as total_amount')
+            ->where('sale_items.is_trackable', true)
+            ->selectRaw('sale_items.module_id, sum(sale_items.qty * COALESCE(sale_items.unit_cost, 0)) as total_amount')
             ->groupBy('sale_items.module_id')
             ->pluck('total_amount', 'sale_items.module_id');
 

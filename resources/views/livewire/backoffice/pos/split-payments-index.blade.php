@@ -43,10 +43,10 @@
                             <td>{{ $sale->sale_number }}</td>
                             <td>{{ $sale->sale_date->format('Y-m-d H:i') }}</td>
                             <td>{{ $sale->customer?->name ?? 'Walk-in' }}</td>
-                            <td>{{ number_format($sale->total, 2) }}</td>
-                            <td>{{ $sale->payments->count() }}</td>
+                            <td><x-ui.money :amount="$sale->total" /></td>
+                            <td>{{ $sale->payments->where('status', 'completed')->count() }}</td>
                             <td>{{ $sale->branch?->name }}</td>
-                            <td>{{ $sale->module?->name }}</td>
+                            <td>{{ $sale->module_names }}</td>
                             <td class="text-right">
                                 <x-ui.table-dropdown>
                                     <x-ui.table-dropdown-item icon="eye" wire:click="viewPayments({{ $sale->id }})">
@@ -87,12 +87,12 @@
                             <div>
                                 <p class="text-xs uppercase tracking-wide text-gray-500">Branch / Module</p>
                                 <p class="font-semibold text-gray-900">{{ $viewSale->branch?->name ?? 'N/A' }}</p>
-                                <p class="text-xs text-gray-500">{{ $viewSale->module?->name ?? 'No module' }}</p>
+                                <p class="text-xs text-gray-500">{{ $viewSale->module_names }}</p>
                             </div>
                             <div class="md:text-right">
-                                <p class="text-xs uppercase tracking-wide text-gray-500">Total Paid</p>
-                                <p class="text-xl font-extrabold text-gray-950">{{ number_format($viewSale->payments->sum('amount'), 2) }}</p>
-                                <p class="text-xs text-gray-500">Sale total: {{ number_format($viewSale->total, 2) }}</p>
+                                <p class="text-xs uppercase tracking-wide text-gray-500">Net Paid</p>
+                                <p class="text-xl font-extrabold text-gray-950"><x-ui.money :amount="$viewSale->paid_amount" /></p>
+                                <p class="text-xs text-gray-500">Sale total: <x-ui.money :amount="$viewSale->total" /></p>
                             </div>
                         </div>
                     </div>
@@ -103,6 +103,7 @@
                                 <tr>
                                     <th class="px-4 py-3">Method</th>
                                     <th class="px-4 py-3">Reference</th>
+                                    <th class="px-4 py-3">Module</th>
                                     <th class="px-4 py-3">Received By</th>
                                     <th class="px-4 py-3">Paid At</th>
                                     <th class="px-4 py-3">Status</th>
@@ -114,21 +115,24 @@
                                     <tr>
                                         <td class="px-4 py-3 font-semibold text-gray-900">{{ ucfirst(str_replace('_', ' ', $payment->method)) }}</td>
                                         <td class="px-4 py-3 text-gray-600">{{ $payment->transaction_reference ?: 'N/A' }}</td>
+                                        <td class="px-4 py-3 text-gray-600">{{ $payment->module?->name ?? 'No module' }}</td>
                                         <td class="px-4 py-3 text-gray-600">{{ $payment->receiver?->name ?? 'System' }}</td>
                                         <td class="px-4 py-3 text-gray-600">{{ $payment->paid_at?->format('M d, Y h:i A') ?? 'N/A' }}</td>
                                         <td class="px-4 py-3">
-                                            <span class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold {{ $payment->status === 'completed' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-700' }}">
+                                            <span class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold {{ $payment->status === 'completed' ? 'bg-emerald-50 text-emerald-700' : ($payment->status === 'refunded' ? 'bg-red-50 text-red-700' : 'bg-slate-100 text-slate-700') }}">
                                                 {{ ucfirst($payment->status) }}
                                             </span>
                                         </td>
-                                        <td class="px-4 py-3 text-right font-semibold text-gray-900">{{ number_format($payment->amount, 2) }}</td>
+                                        <td @class(['px-4 py-3 text-right font-semibold', 'text-red-700' => $payment->status === 'refunded', 'text-gray-900' => $payment->status !== 'refunded'])>
+                                            {{ $payment->status === 'refunded' ? '-' : '' }}<x-ui.money :amount="$payment->amount" />
+                                        </td>
                                     </tr>
                                 @endforeach
                             </tbody>
                             <tfoot class="border-t border-slate-200 bg-slate-50">
                                 <tr>
-                                    <td colspan="5" class="px-4 py-3 text-right font-semibold text-gray-700">Payment Total</td>
-                                    <td class="px-4 py-3 text-right font-extrabold text-gray-950">{{ number_format($viewSale->payments->sum('amount'), 2) }}</td>
+                                    <td colspan="6" class="px-4 py-3 text-right font-semibold text-gray-700">Net Payment</td>
+                                    <td class="px-4 py-3 text-right font-extrabold text-gray-950"><x-ui.money :amount="$viewSale->paid_amount" /></td>
                                 </tr>
                             </tfoot>
                         </table>

@@ -42,12 +42,16 @@
                             </td>
                             <td>{{ $discount->branch?->name }}</td>
                             <td>
-                                {{ $discount->type === 'percentage' ? number_format($discount->value, 2) . '%' : number_format($discount->value, 2) }}
+                                @if ($discount->type === 'percentage')
+                                    {{ number_format($discount->value, 2) }}%
+                                @else
+                                    <x-ui.money :amount="$discount->value" />
+                                @endif
                             </td>
                             <td class="text-xs text-gray-500">
-                                Min {{ number_format($discount->minimum_bill_amount, 2) }}
+                                Min <x-ui.money :amount="$discount->minimum_bill_amount" />
                                 @if ($discount->maximum_discount_amount)
-                                    / Max {{ number_format($discount->maximum_discount_amount, 2) }}
+                                    / Max <x-ui.money :amount="$discount->maximum_discount_amount" />
                                 @endif
                             </td>
                             <td>

@@ -25,7 +25,7 @@
                                 <a href="#"
                                     class="p-5 py-3 flex items-center relative transition-colors duration-200"
                                     :class="activeTab === 'module-{{ $module->id }}' ? 'text-secondary' : ''"
-                                    @click.prevent="setTab('module-{{ $module->id }}')">
+                                    @click.prevent="setTab('module-{{ $module->id }}'); $wire.setActiveModule({{ $module->id }})">
                                     {{ $module->name }}
                                     @php
                                         $moduleCartCount = collect($cart)->where('module_id', $module->id)->sum('qty');
@@ -42,6 +42,7 @@
 
                     @foreach ($modules as $module)
                         <div x-show="activeTab === 'module-{{ $module->id }}'" x-transition.opacity.duration.200ms
+                            x-init="$nextTick(() => { if (activeTab === 'module-{{ $module->id }}') $wire.setActiveModule({{ $module->id }}) })"
                             class="mt-4">
                             <div class="grid grid-cols-1 xl:grid-cols-[1.7fr_1.3fr] gap-6">
                                 <div class="space-y-4">
@@ -52,9 +53,14 @@
                                                 module.</p>
                                         </div>
                                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                            <x-ui.input name="menuSearch{{ $module->id }}"
-                                                wire:model.live.debounce.300ms="menuSearch.{{ $module->id }}"
-                                                placeholder="Search menu items..." />
+                                            @if ((int) $activeModuleId === (int) $module->id)
+                                                <x-ui.input name="menuSearch{{ $module->id }}"
+                                                    wire:model.live.debounce.300ms="menuSearch.{{ $module->id }}"
+                                                    placeholder="Search menu items..." />
+                                            @else
+                                                <x-ui.input name="menuSearch{{ $module->id }}"
+                                                    placeholder="Search menu items..." disabled />
+                                            @endif
                                             <div class="relative z-50">
                                                 <x-ui.input name="customer_search"
                                                     wire:model.live.debounce.300ms="customer_search"
@@ -85,6 +91,11 @@
                                     </div>
 
                                     <div style="max-height: calc(100vh - 18rem); overflow-y: auto; padding-right: .5rem;">
+                                        @if ((int) $activeModuleId !== (int) $module->id)
+                                            <div class="panel py-10 text-center text-gray-500">
+                                                Loading {{ $module->name }} menu...
+                                            </div>
+                                        @else
                                         <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
                                             @forelse ($menuItemsByModule[$module->id] ?? collect() as $item)
                                                 @php
@@ -124,7 +135,7 @@
                                                         <div class="flex items-center justify-between gap-4">
                                                             <div>
                                                                 <p class="text-sm font-semibold text-gray-800">
-                                                                    {{ number_format($item->price, 2) }}</p>
+                                                                    <x-ui.money :amount="$item->price" /></p>
                                                                 <p class="text-xs text-gray-400">
                                                                     {{ $item->is_trackable ? number_format($item->quantity, 0) . ' available' : 'Always available' }}
                                                                 </p>
@@ -142,6 +153,7 @@
                                                 </div>
                                             @endforelse
                                         </div>
+                                        @endif
                                     </div>
                                 </div>
 
@@ -162,7 +174,7 @@
                                         <div class="space-y-3 mt-4">
                                             @php
                                                 $moduleCart = $cartLines;
-                                                $moduleDiscounts = $availableDiscounts;
+                                                $branchDiscounts = $availableDiscounts;
                                                 $subtotal = $orderSummary['subtotal'];
                                                 $tax = $orderSummary['tax'];
                                                 $serviceCharge = $orderSummary['service_charge'];
@@ -218,9 +230,9 @@
                                                                         min="1" />
                                                                 </td>
                                                                 <td class="py-2 text-right">
-                                                                    {{ number_format($line['unit_price'], 2) }}</td>
+                                                                    <x-ui.money :amount="$line['unit_price']" /></td>
                                                                 <td class="py-2 text-right">
-                                                                    {{ number_format($line['subtotal'], 2) }}</td>
+                                                                    <x-ui.money :amount="$line['subtotal']" /></td>
                                                                 <td class="py-2 text-center">
                                                                     <x-ui.button type="button" variant="outline-danger"
                                                                         size="sm"
@@ -242,31 +254,31 @@
                                                 <div class="space-y-2">
                                                     <div class="flex justify-between text-sm text-gray-600">
                                                         <span>Subtotal</span>
-                                                        <span>{{ number_format($subtotal, 2) }}</span>
+                                                        <span><x-ui.money :amount="$subtotal" /></span>
                                                     </div>
                                                     <div class="flex justify-between text-sm text-gray-600">
                                                         <span>Tax</span>
-                                                        <span>{{ number_format($tax, 2) }}</span>
+                                                        <span><x-ui.money :amount="$tax" /></span>
                                                     </div>
                                                     <div class="flex justify-between text-sm text-gray-600">
                                                         <span>Service Charge</span>
-                                                        <span>{{ number_format($serviceCharge, 2) }}</span>
+                                                        <span><x-ui.money :amount="$serviceCharge" /></span>
                                                     </div>
                                                     <div class="flex justify-between text-sm text-gray-600">
                                                         <span>Discount</span>
-                                                        <span>{{ number_format($discountAmount, 2) }}</span>
+                                                        <span><x-ui.money :amount="$discountAmount" /></span>
                                                     </div>
                                                     <div class="flex justify-between text-base font-semibold">
                                                         <span>Total</span>
-                                                        <span>{{ number_format($total, 2) }}</span>
+                                                        <span><x-ui.money :amount="$total" /></span>
                                                     </div>
                                                     <div class="flex justify-between text-sm text-gray-600">
                                                         <span>Paid</span>
-                                                        <span>{{ number_format($paidPreview, 2) }}</span>
+                                                        <span><x-ui.money :amount="$paidPreview" /></span>
                                                     </div>
                                                     <div class="flex justify-between text-sm font-semibold">
                                                         <span>Balance</span>
-                                                        <span>{{ number_format($remaining, 2) }}</span>
+                                                        <span><x-ui.money :amount="$remaining" /></span>
                                                     </div>
                                                 </div>
                                             </div>
@@ -277,7 +289,7 @@
                                                         <h3 class="font-semibold">Order settings</h3>
                                                         <div class="grid gap-3">
                                                             <x-ui.select label="Order Type" name="sale_type"
-                                                                wire:model="sale_type">
+                                                                wire:model.change="sale_type">
                                                                 <option value="dine_in">Dine In</option>
                                                                 <option value="takeaway">Takeaway</option>
                                                                 <option value="delivery">Delivery</option>
@@ -285,7 +297,7 @@
                                                             </x-ui.select>
                                                             @if ($sale_type === 'dine_in')
                                                                 <x-ui.select label="Table" name="table_id"
-                                                                    wire:model="table_id">
+                                                                    wire:model.change="table_id">
                                                                     <option value="">Select a table</option>
                                                                     @foreach ($availableTables as $table)
                                                                         <option value="{{ $table->id }}">{{ $table->name }} @if($table->seats) ({{ $table->seats }} seats)@endif</option>
@@ -293,14 +305,14 @@
                                                                 </x-ui.select>
                                                             @endif
                                                             <x-ui.checkbox label="Send order to kitchen"
-                                                                name="notifyKitchen" wire:model="notifyKitchen" />
+                                                                name="notifyKitchen" wire:model.change="notifyKitchen" />
                                                             <x-ui.select label="Discount" name="discount_id"
-                                                                wire:model.live="discount_id">
+                                                                wire:model.change="discount_id">
                                                                 <option value="">No discount</option>
-                                                                @foreach ($moduleDiscounts as $discountOption)
+                                                                @foreach ($branchDiscounts as $discountOption)
                                                                     <option value="{{ $discountOption->id }}">
                                                                         {{ $discountOption->name }}
-                                                                        ({{ $discountOption->type === 'percentage' ? number_format($discountOption->value, 2) . '%' : number_format($discountOption->value, 2) }})
+                                                                        ({{ $discountOption->type === 'percentage' ? number_format($discountOption->value, 2) . '%' : 'GHS ' . number_format($discountOption->value, 2) }})
                                                                     </option>
                                                                 @endforeach
                                                             </x-ui.select>
@@ -311,14 +323,14 @@
                                                                         @foreach ($orderSummary['module_summaries'] as $moduleSummary)
                                                                             <div class="flex justify-between gap-3">
                                                                                 <span>{{ $moduleSummary['module_name'] }}</span>
-                                                                                <span>{{ number_format($moduleSummary['total'], 2) }}</span>
+                                                                                <span><x-ui.money :amount="$moduleSummary['total']" /></span>
                                                                             </div>
                                                                         @endforeach
                                                                     </div>
                                                                 </div>
                                                             @endif
                                                             <x-ui.input label="Notes" name="notes"
-                                                                wire:model="notes" />
+                                                                wire:model.blur="notes" />
                                                         </div>
                                                     </div>
 
@@ -338,7 +350,7 @@
                                                                 <div class="grid grid-cols-1 gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 md:grid-cols-[1fr_1fr_1fr_auto]" wire:key="pos-payment-row-{{ $index }}">
                                                                     <x-ui.select label="Method"
                                                                         name="splitPayments{{ $index }}Method"
-                                                                        wire:model.live="splitPayments.{{ $index }}.method"
+                                                                        wire:model.change="splitPayments.{{ $index }}.method"
                                                                         wire:change="autofillPaymentAmount(0, {{ $index }})">
                                                                         <option value="cash">Cash</option>
                                                                         <option value="card">Card</option>
@@ -349,11 +361,11 @@
                                                                     </x-ui.select>
                                                                     <x-ui.input label="Amount" type="number"
                                                                         name="splitPayments{{ $index }}Amount"
-                                                                        wire:model.live="splitPayments.{{ $index }}.amount"
+                                                                        wire:model.blur="splitPayments.{{ $index }}.amount"
                                                                         min="0" step="0.01" />
                                                                     <x-ui.input label="Reference"
                                                                         name="splitPayments{{ $index }}Reference"
-                                                                        wire:model="splitPayments.{{ $index }}.transaction_reference" />
+                                                                        wire:model.blur="splitPayments.{{ $index }}.transaction_reference" />
                                                                     <div class="flex items-end">
                                                                         <x-ui.button type="button" variant="outline-danger"
                                                                             size="sm"
@@ -396,7 +408,7 @@
                 </div>
             </div>
 
-            <div class="panel">
+            <div class="panel" wire:init="loadDailySales">
                 <div class="flex items-center justify-between mb-4">
                     <div>
                         <h2 class="text-lg font-semibold">Today's sales</h2>
@@ -405,12 +417,18 @@
                     </div>
                 </div>
 
+                @unless ($showDailySales)
+                    <div class="py-10 text-center text-gray-500">
+                        Loading today's sales...
+                    </div>
+                @else
                 <div class="overflow-x-auto">
                     <x-ui.table>
                         <thead>
                             <tr>
                                 <th>Sale #</th>
                                 <th>Customer</th>
+                                <th>Modules</th>
                                 <th>Table</th>
                                 <th>Total</th>
                                 <th>Balance</th>
@@ -425,6 +443,7 @@
                                 <tr wire:key="pos-today-sale-{{ $sale->id }}">
                                     <td>{{ $sale->sale_number }}</td>
                                     <td>{{ $sale->customer?->name ?? 'Walk-in' }}</td>
+                                    <td>{{ $sale->module_names }}</td>
                                     <td>
                                         @if ($sale->table)
                                             <span @class([
@@ -438,10 +457,10 @@
                                             <span class="text-xs text-gray-500">-</span>
                                         @endif
                                     </td>
-                                    <td>{{ number_format($sale->total, 2) }}</td>
+                                    <td><x-ui.money :amount="$sale->total" /></td>
                                     <td>
                                         @if ((float) $sale->remaining_balance > 0)
-                                            <span class="font-semibold text-danger">{{ number_format($sale->remaining_balance, 2) }}</span>
+                                            <span class="font-semibold text-danger"><x-ui.money :amount="$sale->remaining_balance" /></span>
                                         @else
                                             <span class="text-success">Paid</span>
                                         @endif
@@ -449,7 +468,7 @@
                                     <td>
                                         @if ($sale->is_debt && $sale->latestPayment)
                                             <div class="text-sm">
-                                                <p class="font-semibold">{{ number_format($sale->latestPayment->amount, 2) }}</p>
+                                                <p class="font-semibold"><x-ui.money :amount="$sale->latestPayment->amount" /></p>
                                                 <p class="text-xs text-gray-500">
                                                     {{ str($sale->latestPayment->method)->replace('_', ' ')->headline() }}
                                                     {{ $sale->latestPayment->paid_at ? ' / ' . $sale->latestPayment->paid_at->format('M d, h:i A') : '' }}
@@ -461,7 +480,14 @@
                                             <span class="text-xs text-gray-500">Fully paid</span>
                                         @endif
                                     </td>
-                                    <td>{{ ucfirst($sale->status) }}</td>
+                                    <td>
+                                        <div>{{ ucfirst($sale->status) }}</div>
+                                        @if ((float) $sale->refunded_amount > 0)
+                                            <div class="text-xs font-semibold text-red-600">
+                                                Refunded <x-ui.money :amount="$sale->refunded_amount" />
+                                            </div>
+                                        @endif
+                                    </td>
                                     <td>{{ $sale->sale_date?->format('Y-m-d H:i') }}</td>
                                     <td class="text-center space-y-2">
                                         @php
@@ -499,6 +525,7 @@
                         </tbody>
                     </x-ui.table>
                 </div>
+                @endunless
             </div>
         @endif
 
@@ -552,11 +579,11 @@
                             <div>
                                 <p class="font-semibold text-emerald-950">{{ $recentPaymentSale->sale_number }}</p>
                                 <p class="text-sm text-emerald-700">{{ $recentPaymentSale->customer?->name ?? 'Walk-in Customer' }}</p>
-                                <p class="text-xs text-emerald-700">{{ $recentPaymentSale->branch?->name }}{{ $recentPaymentSale->module ? ' / ' . $recentPaymentSale->module->name : '' }}</p>
+                                <p class="text-xs text-emerald-700">{{ $recentPaymentSale->branch?->name }} / {{ $recentPaymentSale->module_names }}</p>
                             </div>
                             <div class="text-left sm:text-right">
                                 <p class="text-xs uppercase tracking-wide text-emerald-700">Outstanding</p>
-                                <p class="text-xl font-extrabold text-emerald-950">{{ number_format($recentPaymentSale->remaining_balance, 2) }}</p>
+                                <p class="text-xl font-extrabold text-emerald-950"><x-ui.money :amount="$recentPaymentSale->remaining_balance" /></p>
                             </div>
                         </div>
                     </div>
@@ -569,8 +596,8 @@
                             <option value="bank_transfer">Bank transfer</option>
                             <option value="wallet">Wallet</option>
                         </x-ui.select>
-                        <x-ui.input label="Amount" type="number" name="recent_payment_amount" wire:model="recent_payment_amount" min="0.01" step="0.01" />
-                        <x-ui.input label="Reference" name="recent_payment_reference" wire:model="recent_payment_reference" placeholder="Optional" />
+                        <x-ui.input label="Amount (GHS)" type="number" name="recent_payment_amount" wire:model.change="recent_payment_amount" min="0.01" step="0.01" />
+                        <x-ui.input label="Reference" name="recent_payment_reference" wire:model.blur="recent_payment_reference" placeholder="Optional" />
                     </div>
                 </div>
             @endif
@@ -611,7 +638,7 @@
                         @if ($receiptSettings['whatsapp'])
                             <p class="text-xs text-gray-500">WhatsApp: {{ $receiptSettings['whatsapp'] }}</p>
                         @endif
-                        <p class="mt-2 text-sm text-gray-500">{{ $receiptSale->module?->name }} POS Receipt</p>
+                        <p class="mt-2 text-sm text-gray-500">{{ $receiptSale->module_names }} POS Receipt</p>
                         <p class="mt-2 text-sm font-semibold">{{ $receiptSale->sale_number }}</p>
                         <p class="text-xs text-gray-500">{{ $receiptSale->sale_date?->format('M d, Y h:i A') }}</p>
                     </div>
@@ -642,8 +669,8 @@
                                     <tr class="border-b border-slate-100">
                                         <td class="py-2">{{ $item->item_name }}</td>
                                         <td class="py-2 text-center">{{ number_format($item->qty, 0) }}</td>
-                                        <td class="py-2 text-right">{{ number_format($item->unit_price, 2) }}</td>
-                                        <td class="py-2 text-right">{{ number_format($item->total, 2) }}</td>
+                                        <td class="py-2 text-right"><x-ui.money :amount="$item->unit_price" /></td>
+                                        <td class="py-2 text-right"><x-ui.money :amount="$item->total" /></td>
                                     </tr>
                                 @endforeach
                             </tbody>
@@ -651,7 +678,7 @@
                     </div>
 
                     <div class="space-y-2 border-b border-dashed border-slate-300 pb-4 text-sm">
-                        <div class="flex justify-between"><span>Subtotal</span><span>{{ number_format($receiptSale->subtotal, 2) }}</span></div>
+                        <div class="flex justify-between"><span>Subtotal</span><span><x-ui.money :amount="$receiptSale->subtotal" /></span></div>
                         @forelse ($receiptTaxes as $taxLine)
                             <div class="flex justify-between">
                                 <span>
@@ -660,29 +687,34 @@
                                         ({{ number_format($taxLine['rate'], 2) }}%)
                                     @endif
                                 </span>
-                                <span>{{ number_format($taxLine['amount'], 2) }}</span>
+                                <span><x-ui.money :amount="$taxLine['amount']" /></span>
                             </div>
                         @empty
-                            <div class="flex justify-between"><span>Tax</span><span>{{ number_format($receiptSale->tax, 2) }}</span></div>
+                            <div class="flex justify-between"><span>Tax</span><span><x-ui.money :amount="$receiptSale->tax" /></span></div>
                         @endforelse
-                        <div class="flex justify-between font-semibold"><span>Total Tax</span><span>{{ number_format($receiptSale->tax, 2) }}</span></div>
-                        <div class="flex justify-between"><span>Service Charge</span><span>{{ number_format($receiptSale->service_charge, 2) }}</span></div>
-                        <div class="flex justify-between"><span>Discount</span><span>{{ number_format($receiptSale->discount, 2) }}</span></div>
-                        <div class="flex justify-between text-base font-extrabold"><span>Total</span><span>{{ number_format($receiptSale->total, 2) }}</span></div>
-                        <div class="flex justify-between"><span>Paid</span><span>{{ number_format($receiptSale->paid_amount, 2) }}</span></div>
-                        <div class="flex justify-between"><span>Balance</span><span>{{ number_format($receiptSale->remaining_balance, 2) }}</span></div>
+                        <div class="flex justify-between font-semibold"><span>Total Tax</span><span><x-ui.money :amount="$receiptSale->tax" /></span></div>
+                        <div class="flex justify-between"><span>Service Charge</span><span><x-ui.money :amount="$receiptSale->service_charge" /></span></div>
+                        <div class="flex justify-between"><span>Discount</span><span><x-ui.money :amount="$receiptSale->discount" /></span></div>
+                        <div class="flex justify-between text-base font-extrabold"><span>Total</span><span><x-ui.money :amount="$receiptSale->total" /></span></div>
+                        @if ((float) $receiptSale->refunded_amount > 0)
+                            <div class="flex justify-between text-red-700"><span>Refunded</span><span>-<x-ui.money :amount="$receiptSale->refunded_amount" /></span></div>
+                        @endif
+                        <div class="flex justify-between"><span>Paid</span><span><x-ui.money :amount="$receiptSale->paid_amount" /></span></div>
+                        <div class="flex justify-between"><span>Balance</span><span><x-ui.money :amount="$receiptSale->remaining_balance" /></span></div>
                     </div>
 
                     <div class="space-y-2 text-sm">
                         <p class="font-semibold">Payments</p>
                         @forelse ($receiptSale->payments as $payment)
                             <div class="flex justify-between gap-4">
-                                <span>{{ ucfirst(str_replace('_', ' ', $payment->method)) }}
+                                <span>{{ $payment->status === 'refunded' ? 'Refund' : ucfirst(str_replace('_', ' ', $payment->method)) }}
                                     @if ($payment->transaction_reference)
                                         <span class="text-gray-400">({{ $payment->transaction_reference }})</span>
                                     @endif
                                 </span>
-                                <span>{{ number_format($payment->amount, 2) }}</span>
+                                <span @class(['text-red-700' => $payment->status === 'refunded'])>
+                                    {{ $payment->status === 'refunded' ? '-' : '' }}<x-ui.money :amount="$payment->amount" />
+                                </span>
                             </div>
                         @empty
                             <p class="text-gray-500">No payment recorded.</p>

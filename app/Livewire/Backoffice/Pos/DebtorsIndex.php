@@ -3,49 +3,54 @@
 namespace App\Livewire\Backoffice\Pos;
 
 use App\Livewire\Concerns\HasBranchScope;
-use App\Models\CashRegister;
-use App\Models\CashRegisterTransaction;
-use App\Models\Payment;
 use App\Models\Sale;
+use App\Support\SalePaymentRecorder;
 use App\Support\SaleTableRelease;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Jantinnerezo\LivewireAlert\Facades\LivewireAlert;
 use Livewire\Component;
 use Livewire\WithPagination;
-use Illuminate\Support\Facades\Log;
 use Throwable;
 
 class DebtorsIndex extends Component
 {
-    use WithPagination;
     use HasBranchScope;
+    use WithPagination;
 
     public $search = '';
+
     public $filterBranch = '';
+
     public $filterModule = '';
+
     public $paymentSaleId;
+
     public $payment_method = 'cash';
+
     public $payment_amount = 0;
+
     public $payment_reference = '';
 
     public function render()
     {
         $branchId = $this->filterBranch ?: (auth()->user()?->isSuperAdmin() ? null : session('branch_id'));
         $paymentSale = $this->paymentSaleId
-            ? Sale::with(['customer', 'branch', 'module'])->accessible()->find($this->paymentSaleId)
+            ? Sale::with(['customer', 'branch', 'modules'])->accessible()->find($this->paymentSaleId)
             : null;
 
         return view('livewire.backoffice.pos.debtors-index', [
-            'debtors' => Sale::with(['customer', 'branch', 'module', 'creator'])
+            'debtors' => Sale::with(['customer', 'branch', 'modules', 'creator'])
                 ->accessible()
                 ->where('is_debt', true)
                 ->where('status', '!=', 'refunded')
-                ->when($branchId, fn($query) => $query->where('branch_id', $branchId))
+                ->when($branchId, fn ($query) => $query->where('branch_id', $branchId))
                 ->forModule($this->filterModule)
-                ->when($this->search, fn($query) => $query->where(function ($query) {
+                ->when($this->search, fn ($query) => $query->where(function ($query) {
                     $query->where('sale_number', 'like', "%{$this->search}%")
-                        ->orWhereHas('customer', fn($q) => $q->where('name', 'like', "%{$this->search}%"));
+                        ->orWhereHas('customer', fn ($q) => $q->where('name', 'like', "%{$this->search}%"));
                 }))
                 ->latest('sale_date')
                 ->paginate(15),
@@ -86,17 +91,29 @@ class DebtorsIndex extends Component
                 $sale = Sale::accessible()
                     ->where('is_debt', true)
                     ->where('status', '!=', 'refunded')
+                    ->with('items')
                     ->lockForUpdate()
                     ->findOrFail($this->paymentSaleId);
                 $amount = round((float) $this->payment_amount, 2);
 
-                abort_if($amount > (float) $sale->remaining_balance, 422, 'Payment cannot exceed outstanding balance.');
+                if ($amount > (float) $sale->remaining_balance) {
+                    throw ValidationException::withMessages([
+                        'payment_amount' => 'Payment cannot exceed the outstanding balance.',
+                    ]);
+                }
 
-                $register = $this->openRegisterFor($sale);
-                $this->recordPayment($sale, $register, $this->payment_method, $amount, $this->payment_reference ?: null);
+                SalePaymentRecorder::recordCollection(
+                    sale: $sale,
+                    method: $this->payment_method,
+                    amount: $amount,
+                    reference: $this->payment_reference ?: null,
+                    userId: (int) auth()->id(),
+                    registerName: 'Auto-opened debtor payment register',
+                    notes: 'Debt payment for sale '.$sale->sale_number,
+                );
 
                 $paid = round((float) $sale->paid_amount + $amount, 2);
-                $remaining = round((float) $sale->total - $paid, 2);
+                $remaining = round((float) $sale->total - $paid - (float) $sale->refunded_amount, 2);
 
                 $sale->update([
                     'paid_amount' => $paid,
@@ -120,6 +137,8 @@ class DebtorsIndex extends Component
                 ->text('The debtor balance has been updated.')
                 ->success()
                 ->show();
+        } catch (ValidationException $e) {
+            throw $e;
         } catch (Throwable $e) {
             Log::error('DebtorsIndex::collectPayment failed', ['exception' => $e->getMessage(), 'trace' => $e->getTraceAsString(), 'paymentSaleId' => $this->paymentSaleId ?? null]);
             LivewireAlert::title('Error')
@@ -127,53 +146,6 @@ class DebtorsIndex extends Component
                 ->error()
                 ->show();
         }
-    }
-
-    protected function openRegisterFor(Sale $sale): CashRegister
-    {
-        $moduleId = $sale->items->pluck('module_id')->filter()->first();
-        $register = CashRegister::where('branch_id', $sale->branch_id)
-            ->where('module_id', $moduleId)
-            ->where('is_open', true)
-            ->latest('opened_at')
-            ->first();
-
-        return $register ?: CashRegister::create([
-            'branch_id' => $sale->branch_id,
-            'module_id' => $moduleId,
-            'opened_by' => auth()->id(),
-            'name' => 'Auto-opened debtor payment register',
-        ]);
-    }
-
-    protected function recordPayment(Sale $sale, CashRegister $register, string $method, float $amount, ?string $reference = null): void
-    {
-        CashRegisterTransaction::create([
-            'cash_register_id' => $register->id,
-            'branch_id' => $sale->branch_id,
-            'module_id' => $register->module_id,
-            'sale_id' => $sale->id,
-            'performed_by' => auth()->id(),
-            'type' => 'sale',
-            'amount' => $amount,
-            'notes' => 'Debt payment for sale ' . $sale->sale_number,
-            'transaction_date' => now(),
-        ]);
-
-        $register->addExpectedBalanceForTransaction('sale', $amount);
-
-        Payment::create([
-            'sale_id' => $sale->id,
-            'branch_id' => $sale->branch_id,
-            'module_id' => $register->module_id,
-            'cash_register_id' => $register->id,
-            'received_by' => auth()->id(),
-            'method' => $method,
-            'amount' => $amount,
-            'transaction_reference' => $reference,
-            'status' => 'completed',
-            'paid_at' => now(),
-        ]);
     }
 
     public function updatedFilterBranch(): void

@@ -44,7 +44,7 @@
                             <tr>
                                 <td>{{ $cost->title }}</td>
                                 <td>{{ $cost->production_date->format('Y-m-d') }}</td>
-                                <td>{{ number_format($cost->amount, 2) }}</td>
+                                <td><x-ui.money :amount="$cost->amount" /></td>
                                 <td>{{ $cost->branch?->name }}</td>
                                 <td>{{ $cost->module?->name }}</td>
                                 <td class="text-center">

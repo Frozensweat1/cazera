@@ -25,27 +25,49 @@ class Financial extends Component
     use HasDashboardFilters;
 
     public array $monthlyLabels = [];
+
     public array $monthlyRevenue = [];
+
     public array $monthlyExpenses = [];
+
     public array $profitLabels = [];
+
     public array $profitSeries = [];
+
     public float $totalRevenue = 0.0;
+
     public float $collectedRevenue = 0.0;
+
     public float $totalExpenses = 0.0;
+
     public float $maintenanceCost = 0.0;
+
     public float $productionCost = 0.0;
+
     public float $trackableItemCost = 0.0;
+
     public float $grossProfit = 0.0;
+
     public float $netProfit = 0.0;
+
     public float $grossMargin = 0.0;
+
     public float $netMargin = 0.0;
+
     public float $inventoryValue = 0.0;
+
     public float $trackableMenuItemValue = 0.0;
+
     public float $registerHoldings = 0.0;
+
     public float $totalHoldings = 0.0;
+
     public float $cashVolume = 0.0;
+
     public float $cardVolume = 0.0;
+
     public float $otherVolume = 0.0;
+
     public array $paymentBreakdown = [];
 
     public function mount(): void
@@ -128,11 +150,10 @@ class Financial extends Component
             ->keyBy('date');
         $itemCostByDay = $this->applyDashboardScope(SaleItem::query(), 'sale_items.branch_id', 'sale_items.module_id')
             ->join('sales', 'sale_items.sale_id', '=', 'sales.id')
-            ->join('menu_items', 'sale_items.menu_item_id', '=', 'menu_items.id')
             ->whereBetween('sales.sale_date', [$from, $to])
             ->whereNotIn('sales.status', ['cancelled', 'refunded'])
-            ->where('menu_items.is_trackable', true)
-            ->selectRaw('DATE(sales.sale_date) as date, SUM(sale_items.qty * COALESCE(menu_items.cost_price, 0)) as total')
+            ->where('sale_items.is_trackable', true)
+            ->selectRaw('DATE(sales.sale_date) as date, SUM(sale_items.qty * COALESCE(sale_items.unit_cost, 0)) as total')
             ->groupBy('date')
             ->orderBy('date')
             ->get()
@@ -159,10 +180,11 @@ class Financial extends Component
             ->toArray();
 
         $paymentQuery = $this->applyDateRange($this->applyDashboardScope(Payment::query()), 'paid_at')
-            ->where('status', 'completed');
+            ->whereIn('status', ['completed', 'refunded']);
 
-        $this->cashVolume = (float) (clone $paymentQuery)->whereRaw("LOWER(method) = 'cash'")->sum('amount');
-        $this->cardVolume = (float) (clone $paymentQuery)->whereRaw("LOWER(method) = 'card'")->sum('amount');
+        $netPaymentAmount = DB::raw("CASE WHEN status = 'refunded' THEN -amount ELSE amount END");
+        $this->cashVolume = (float) (clone $paymentQuery)->whereRaw("LOWER(method) = 'cash'")->sum($netPaymentAmount);
+        $this->cardVolume = (float) (clone $paymentQuery)->whereRaw("LOWER(method) = 'card'")->sum($netPaymentAmount);
         $this->otherVolume = (float) (clone $paymentQuery)->whereRaw("LOWER(method) NOT IN ('cash', 'card')")->sum('amount');
 
         $this->paymentBreakdown = [

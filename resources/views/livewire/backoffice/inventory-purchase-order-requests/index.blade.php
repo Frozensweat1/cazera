@@ -61,8 +61,8 @@
                             </td>
                             <td>{{ $request->supplier?->name ?? '-' }}</td>
                             <td>
-                                <p class="font-semibold">{{ number_format($request->requested_qty, 2) }} @ {{ number_format($request->unit_cost, 2) }}</p>
-                                <p class="text-xs text-gray-500">Total {{ number_format($request->total_cost, 2) }}</p>
+                                <p class="font-semibold">{{ number_format($request->requested_qty, 2) }} @ <x-ui.money :amount="$request->unit_cost" /></p>
+                                <p class="text-xs text-gray-500">Total <x-ui.money :amount="$request->total_cost" /></p>
                                 @if ($request->quantity_before !== null)
                                     <p class="text-xs text-gray-500">{{ number_format($request->quantity_before, 2) }} to {{ number_format($request->quantity_after, 2) }}</p>
                                 @endif

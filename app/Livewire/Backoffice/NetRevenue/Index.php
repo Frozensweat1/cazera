@@ -21,8 +21,11 @@ class Index extends Component
     use HasBranchScope;
 
     public $filterBranch = '';
+
     public $filterModule = '';
+
     public $dateFrom = '';
+
     public $dateTo = '';
 
     public function mount(): void
@@ -38,7 +41,7 @@ class Index extends Component
         $endDate = Carbon::parse($this->dateTo ?: now()->toDateString())->endOfDay();
 
         $salesQuery = Sale::accessible()
-            ->with(['branch', 'module'])
+            ->with('branch')
             ->whereNotIn('status', ['cancelled', 'refunded'])
             ->when($branchId, fn ($query) => $query->where('branch_id', $branchId))
             ->forModule($this->filterModule)
@@ -87,29 +90,28 @@ class Index extends Component
             ->selectRaw('branch_id, module_id, sum(amount) as total_amount')
             ->groupBy('branch_id', 'module_id')
             ->get()
-            ->keyBy(fn ($row) => $row->branch_id . ':' . $row->module_id);
+            ->keyBy(fn ($row) => $row->branch_id.':'.$row->module_id);
         $expensesByBranchModule = (clone $expenseQuery)
             ->selectRaw('branch_id, module_id, sum(amount) as total_amount')
             ->groupBy('branch_id', 'module_id')
             ->get()
-            ->keyBy(fn ($row) => $row->branch_id . ':' . $row->module_id);
+            ->keyBy(fn ($row) => $row->branch_id.':'.$row->module_id);
         $maintenanceByBranchModule = (clone $maintenanceQuery)
             ->selectRaw('branch_id, module_id, sum(COALESCE(actual_cost, estimated_cost, 0)) as total_amount')
             ->groupBy('branch_id', 'module_id')
             ->get()
-            ->keyBy(fn ($row) => $row->branch_id . ':' . $row->module_id);
+            ->keyBy(fn ($row) => $row->branch_id.':'.$row->module_id);
         $itemCostByBranchModule = SaleItem::accessible()
             ->when($branchId, fn ($query) => $query->where('sale_items.branch_id', $branchId))
             ->when($this->filterModule, fn ($query) => $query->where('sale_items.module_id', $this->filterModule))
             ->join('sales', 'sale_items.sale_id', '=', 'sales.id')
-            ->join('menu_items', 'sale_items.menu_item_id', '=', 'menu_items.id')
             ->whereBetween('sales.sale_date', [$startDate, $endDate])
             ->whereNotIn('sales.status', ['cancelled', 'refunded'])
-            ->where('menu_items.is_trackable', true)
-            ->selectRaw('sale_items.branch_id, sale_items.module_id, sum(sale_items.qty * COALESCE(menu_items.cost_price, 0)) as total_amount')
+            ->where('sale_items.is_trackable', true)
+            ->selectRaw('sale_items.branch_id, sale_items.module_id, sum(sale_items.qty * COALESCE(sale_items.unit_cost, 0)) as total_amount')
             ->groupBy('sale_items.branch_id', 'sale_items.module_id')
             ->get()
-            ->keyBy(fn ($row) => $row->branch_id . ':' . $row->module_id);
+            ->keyBy(fn ($row) => $row->branch_id.':'.$row->module_id);
 
         $salesForBreakdown = (clone $salesQuery)->with(['branch', 'items'])->get();
         $modules = Module::query()
@@ -127,10 +129,10 @@ class Index extends Component
                         'paid_total' => (float) $paid,
                     ]);
             })
-            ->groupBy(fn ($row) => $row->branch_id . ':' . $row->module_id)
+            ->groupBy(fn ($row) => $row->branch_id.':'.$row->module_id)
             ->map(function ($rows) use ($modules, $productionByBranchModule, $expensesByBranchModule, $maintenanceByBranchModule, $itemCostByBranchModule) {
                 $row = $rows->first();
-                $key = $row->branch_id . ':' . $row->module_id;
+                $key = $row->branch_id.':'.$row->module_id;
                 $itemCost = (float) ($itemCostByBranchModule->get($key)->total_amount ?? 0);
                 $production = (float) ($productionByBranchModule->get($key)->total_amount ?? 0);
                 $maintenance = (float) ($maintenanceByBranchModule->get($key)->total_amount ?? 0);

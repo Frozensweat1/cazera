@@ -200,7 +200,7 @@
                             </td>
 
                             <td>
-                                {{ number_format($item->price, 2) }}
+                                <x-ui.money :amount="$item->price" />
                             </td>
 
                             <td>

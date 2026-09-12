@@ -3,7 +3,6 @@
 namespace App\Livewire\Backoffice\Customers;
 
 use App\Models\Customer;
-use App\Models\Payment;
 use App\Models\Sale;
 use Illuminate\Database\Eloquent\Builder;
 use Livewire\Component;
@@ -103,7 +102,7 @@ class History extends Component
             : null;
 
         $salesQuery = Sale::query()
-            ->with(['branch', 'module', 'items', 'payments'])
+            ->with(['branch', 'modules', 'items', 'payments'])
             ->where('customer_id', $this->selectedCustomerId)
             ->when($this->saleStatus, fn (Builder $query) => $query->where('status', $this->saleStatus))
             ->when($this->dateFrom, fn (Builder $query) => $query->whereDate('sale_date', '>=', $this->dateFrom))
@@ -112,13 +111,7 @@ class History extends Component
         $historyTotals = [
             'orders' => $selectedCustomer ? (clone $salesQuery)->count() : 0,
             'sales' => $selectedCustomer ? (clone $salesQuery)->sum('total') : 0,
-            'paid' => $selectedCustomer
-                ? Payment::query()
-                    ->whereHas('sale', fn (Builder $query) => $query->where('customer_id', $selectedCustomer->id))
-                    ->when($this->dateFrom, fn (Builder $query) => $query->whereDate('paid_at', '>=', $this->dateFrom))
-                    ->when($this->dateTo, fn (Builder $query) => $query->whereDate('paid_at', '<=', $this->dateTo))
-                    ->sum('amount')
-                : 0,
+            'paid' => $selectedCustomer ? (clone $salesQuery)->sum('paid_amount') : 0,
             'debt' => $selectedCustomer?->total_debt ?? 0,
         ];
 

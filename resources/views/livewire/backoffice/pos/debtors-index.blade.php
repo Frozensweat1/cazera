@@ -43,10 +43,10 @@
                             <td>{{ $debtor->sale_number }}</td>
                             <td>{{ $debtor->sale_date->format('Y-m-d H:i') }}</td>
                             <td>{{ $debtor->customer?->name ?? 'Walk-in' }}</td>
-                            <td>{{ number_format($debtor->total, 2) }}</td>
-                            <td>{{ number_format($debtor->remaining_balance, 2) }}</td>
+                            <td><x-ui.money :amount="$debtor->total" /></td>
+                            <td><x-ui.money :amount="$debtor->remaining_balance" /></td>
                             <td>{{ $debtor->branch?->name }}</td>
-                            <td>{{ $debtor->module?->name }}</td>
+                            <td>{{ $debtor->module_names }}</td>
                             <td class="text-right">
                                 <x-ui.table-dropdown>
                                     <x-ui.table-dropdown-item icon="banknotes" wire:click="openPayment({{ $debtor->id }})">
@@ -76,11 +76,11 @@
                             <div>
                                 <p class="font-semibold text-amber-950">{{ $paymentSale->sale_number }}</p>
                                 <p class="text-sm text-amber-700">{{ $paymentSale->customer?->name ?? 'Walk-in Customer' }}</p>
-                                <p class="text-xs text-amber-700">{{ $paymentSale->branch?->name }}{{ $paymentSale->module ? ' / ' . $paymentSale->module->name : '' }}</p>
+                                <p class="text-xs text-amber-700">{{ $paymentSale->branch?->name }} / {{ $paymentSale->module_names }}</p>
                             </div>
                             <div class="text-left sm:text-right">
                                 <p class="text-xs uppercase tracking-wide text-amber-700">Outstanding</p>
-                                <p class="text-xl font-extrabold text-amber-950">{{ number_format($paymentSale->remaining_balance, 2) }}</p>
+                                <p class="text-xl font-extrabold text-amber-950"><x-ui.money :amount="$paymentSale->remaining_balance" /></p>
                             </div>
                         </div>
                     </div>
@@ -93,7 +93,7 @@
                             <option value="bank_transfer">Bank transfer</option>
                             <option value="wallet">Wallet</option>
                         </x-ui.select>
-                        <x-ui.input label="Amount" type="number" name="payment_amount" wire:model="payment_amount" min="0.01" step="0.01" />
+                        <x-ui.input label="Amount (GHS)" type="number" name="payment_amount" wire:model.change="payment_amount" min="0.01" step="0.01" />
                         <x-ui.input label="Reference" name="payment_reference" wire:model="payment_reference" placeholder="Optional" />
                     </div>
                 </div>

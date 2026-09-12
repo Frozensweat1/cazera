@@ -5,10 +5,10 @@ namespace App\Models;
 use App\Models\Concerns\HasBranchModuleAccess;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Database\Eloquent\Relations\HasOneThrough;
 use Illuminate\Database\Eloquent\Relations\HasOne;
-use App\Models\DiningTable;
+use Illuminate\Support\Collection;
 
 class Sale extends Model
 {
@@ -28,6 +28,7 @@ class Sale extends Model
         'service_charge',
         'total',
         'paid_amount',
+        'refunded_amount',
         'remaining_balance',
         'is_debt',
         'sale_date',
@@ -43,6 +44,7 @@ class Sale extends Model
         'service_charge' => 'decimal:2',
         'total' => 'decimal:2',
         'paid_amount' => 'decimal:2',
+        'refunded_amount' => 'decimal:2',
         'remaining_balance' => 'decimal:2',
         'is_debt' => 'boolean',
         'sale_date' => 'datetime',
@@ -76,9 +78,9 @@ class Sale extends Model
         return $this->hasMany(SaleItem::class);
     }
 
-    public function module(): HasOneThrough
+    public function modules(): BelongsToMany
     {
-        return $this->hasOneThrough(Module::class, SaleItem::class, 'sale_id', 'id', 'id', 'module_id');
+        return $this->belongsToMany(Module::class, 'sale_items')->distinct();
     }
 
     public function payments(): HasMany
@@ -109,7 +111,7 @@ class Sale extends Model
 
     public function getRemainingAttribute(): float
     {
-        return $this->total - $this->paid_amount;
+        return max(0, (float) $this->total - (float) $this->paid_amount - (float) $this->refunded_amount);
     }
 
     public function getIsPaidAttribute(): bool
@@ -117,7 +119,14 @@ class Sale extends Model
         return $this->remaining_balance <= 0;
     }
 
-    public function moduleBreakdownForAmount(float $amount, $items): \Illuminate\Support\Collection
+    public function getModuleNamesAttribute(): string
+    {
+        $modules = $this->relationLoaded('modules') ? $this->modules : $this->modules()->get();
+
+        return $modules->pluck('name')->filter()->unique()->implode(', ') ?: 'No module';
+    }
+
+    public function moduleBreakdownForAmount(float $amount, $items): Collection
     {
         $itemTotals = collect($items)
             ->filter(fn ($item) => ! empty($item->module_id))

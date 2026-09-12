@@ -86,8 +86,14 @@
                                     {{ ucfirst(str_replace('_', ' ', $request->status)) }}
                                 </span>
                             </td>
-                            <td>{{ number_format($request->estimated_cost, 2) }}</td>
-                            <td>{{ $request->actual_cost ? number_format($request->actual_cost, 2) : 'N/A' }}</td>
+                            <td><x-ui.money :amount="$request->estimated_cost" /></td>
+                            <td>
+                                @if ($request->actual_cost !== null)
+                                    <x-ui.money :amount="$request->actual_cost" />
+                                @else
+                                    N/A
+                                @endif
+                            </td>
                             <td>{{ $request->requested_date?->format('Y-m-d') }}</td>
                             <td class="text-center">
                                 @if ($request->is_locked && ! $canManageRestrictedActions)

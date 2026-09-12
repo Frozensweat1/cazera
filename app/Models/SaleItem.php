@@ -19,6 +19,8 @@ class SaleItem extends Model
         'sku',
         'qty',
         'unit_price',
+        'unit_cost',
+        'is_trackable',
         'tax',
         'discount',
         'subtotal',
@@ -36,6 +38,8 @@ class SaleItem extends Model
     protected $casts = [
         'qty' => 'decimal:2',
         'unit_price' => 'decimal:2',
+        'unit_cost' => 'decimal:2',
+        'is_trackable' => 'boolean',
         'tax' => 'decimal:2',
         'discount' => 'decimal:2',
         'subtotal' => 'decimal:2',

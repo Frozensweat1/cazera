@@ -78,7 +78,10 @@
 
         <div class="mt-12 flex flex-col gap-4 border-t border-ivory/10 pt-6 text-xs text-ivory/50 md:flex-row md:items-center md:justify-between">
             <p>&copy; {{ date('Y') }} {{ $name }}. All rights reserved.</p>
-            <p>{{ \App\Support\WebsiteContent::copy('footer.bottom_note', 'Built for discovery, direct calls, WhatsApp conversations and memorable visits.') }}</p>
+            <div class="flex flex-col gap-2 md:items-end">
+                <p>{{ \App\Support\WebsiteContent::copy('footer.bottom_note', 'Built for discovery, direct calls, WhatsApp conversations and memorable visits.') }}</p>
+                <p>Built by <span class="font-semibold text-ivory">FrozenBytes</span></p>
+            </div>
         </div>
     </div>
 </footer>

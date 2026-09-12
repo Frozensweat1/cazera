@@ -3,39 +3,53 @@
 namespace App\Livewire\Backoffice\Pos;
 
 use App\Livewire\Concerns\HasBranchScope;
-use App\Models\CashRegister;
-use App\Models\CashRegisterTransaction;
 use App\Models\Customer;
 use App\Models\MenuItemAdjustment;
-use App\Models\Payment;
 use App\Models\Sale;
+use App\Support\PosCache;
+use App\Support\SalePaymentRecorder;
+use App\Support\SaleRefundSettlement;
 use App\Support\SaleTableRelease;
 use App\Support\WebsiteContent;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Jantinnerezo\LivewireAlert\Facades\LivewireAlert;
 use Livewire\Component;
 use Livewire\WithPagination;
-use Illuminate\Support\Facades\Log;
 use Throwable;
 
 class SalesIndex extends Component
 {
-    use WithPagination;
     use HasBranchScope;
+    use WithPagination;
 
     public $search = '';
+
     public $filterBranch = '';
+
     public $filterModule = '';
+
     public $filterStatus = '';
+
     public $receiptSaleId;
+
     public $paymentSaleId;
+
     public $payment_method = 'cash';
+
     public $payment_amount = 0;
+
     public $payment_reference;
+
     public $refundSaleId;
+
     public $refund_method = 'cash';
+
     public $refund_amount = 0;
+
     public $refund_reason;
 
     public function render()
@@ -43,28 +57,30 @@ class SalesIndex extends Component
         $branchId = $this->filterBranch ?: (auth()->user()?->isSuperAdmin() ? null : session('branch_id'));
 
         return view('livewire.backoffice.pos.sales-index', [
-            'sales' => Sale::with(['branch', 'customer', 'module', 'creator', 'payments', 'table'])
+            'sales' => Sale::with(['branch', 'customer', 'modules', 'creator', 'payments', 'table'])
                 ->accessible()
                 ->where('status', '!=', 'refunded')
-                ->when($branchId, fn($query) => $query->where('branch_id', $branchId))
+                ->when($branchId, fn ($query) => $query->where('branch_id', $branchId))
                 ->forModule($this->filterModule)
-                ->when($this->filterStatus, fn($query) => $query->where('status', $this->filterStatus))
-                ->when($this->search, fn($query) => $query->where(function ($query) {
+                ->when($this->filterStatus, fn ($query) => $query->where('status', $this->filterStatus))
+                ->when($this->search, fn ($query) => $query->where(function ($query) {
                     $query->where('sale_number', 'like', "%{$this->search}%")
-                        ->orWhereHas('customer', fn($query) => $query->where('name', 'like', "%{$this->search}%"));
+                        ->orWhereHas('customer', fn ($query) => $query->where('name', 'like', "%{$this->search}%"));
                 }))
                 ->latest('sale_date')
                 ->paginate(15),
             'branches' => $this->accessibleBranches(),
             'modules' => $this->accessibleModules($branchId ?: null),
             'receiptSale' => $this->receiptSaleId
-                ? Sale::with(['branch', 'module', 'customer', 'creator', 'items', 'payments.receiver'])->find($this->receiptSaleId)
+                ? Sale::with(['branch', 'modules', 'customer', 'creator', 'items', 'payments.receiver'])
+                    ->accessible()
+                    ->find($this->receiptSaleId)
                 : null,
             'paymentSale' => $this->paymentSaleId
-                ? Sale::with(['customer', 'module'])->find($this->paymentSaleId)
+                ? Sale::with(['customer', 'modules'])->accessible()->find($this->paymentSaleId)
                 : null,
             'refundSale' => $this->refundSaleId
-                ? Sale::with(['customer', 'module'])->find($this->refundSaleId)
+                ? Sale::with(['customer', 'modules'])->accessible()->find($this->refundSaleId)
                 : null,
             'receiptSettings' => $this->receiptSettings(),
         ]);
@@ -121,16 +137,27 @@ class SalesIndex extends Component
             ]);
 
             DB::transaction(function () {
-                $sale = Sale::accessible()->lockForUpdate()->findOrFail($this->paymentSaleId);
+                $sale = Sale::accessible()->with('items')->lockForUpdate()->findOrFail($this->paymentSaleId);
                 $amount = round((float) $this->payment_amount, 2);
 
-                abort_if($amount > (float) $sale->remaining_balance, 422, 'Payment cannot exceed outstanding balance.');
+                if ($amount > (float) $sale->remaining_balance) {
+                    throw ValidationException::withMessages([
+                        'payment_amount' => 'Payment cannot exceed the outstanding balance.',
+                    ]);
+                }
 
-                $register = $this->openRegisterFor($sale);
-                $this->recordPayment($sale, $register, $this->payment_method, $amount, $this->payment_reference);
+                SalePaymentRecorder::recordCollection(
+                    sale: $sale,
+                    method: $this->payment_method,
+                    amount: $amount,
+                    reference: $this->payment_reference,
+                    userId: (int) auth()->id(),
+                    registerName: 'Auto-opened POS register',
+                    notes: 'Balance payment for sale '.$sale->sale_number,
+                );
 
                 $paid = round((float) $sale->paid_amount + $amount, 2);
-                $remaining = round((float) $sale->total - $paid, 2);
+                $remaining = round((float) $sale->total - $paid - (float) $sale->refunded_amount, 2);
 
                 $sale->update([
                     'paid_amount' => $paid,
@@ -151,6 +178,8 @@ class SalesIndex extends Component
                 ->text('Outstanding balance has been updated.')
                 ->success()
                 ->show();
+        } catch (ValidationException $e) {
+            throw $e;
         } catch (Throwable $e) {
             Log::error('SalesIndex::collectPayment failed', ['exception' => $e->getMessage(), 'trace' => $e->getTraceAsString(), 'paymentSaleId' => $this->paymentSaleId ?? null]);
             LivewireAlert::title('Error')
@@ -189,89 +218,85 @@ class SalesIndex extends Component
                     ->findOrFail($this->refundSaleId);
                 $amount = round((float) $this->refund_amount, 2);
 
-                abort_if($amount > (float) $sale->paid_amount, 422, 'Refund cannot exceed paid amount.');
-
-                $register = $this->openRegisterFor($sale);
-                $moduleId = $sale->items->pluck('module_id')->filter()->first();
-
-                CashRegisterTransaction::create([
-                    'cash_register_id' => $register->id,
-                    'branch_id' => $sale->branch_id,
-                    'module_id' => $moduleId,
-                    'sale_id' => $sale->id,
-                    'performed_by' => auth()->id(),
-                    'type' => 'refund',
-                    'amount' => -1 * $amount,
-                    'notes' => $this->refund_reason ?: 'Refund for sale ' . $sale->sale_number,
-                    'transaction_date' => now(),
-                ]);
-
-                $register->addExpectedBalanceForTransaction('refund', -1 * $amount);
-
-                Payment::create([
-                    'sale_id' => $sale->id,
-                    'branch_id' => $sale->branch_id,
-                    'module_id' => $moduleId,
-                    'cash_register_id' => $register->id,
-                    'received_by' => auth()->id(),
-                    'method' => $this->refund_method,
-                    'amount' => $amount,
-                    'transaction_reference' => null,
-                    'status' => 'refunded',
-                    'notes' => $this->refund_reason,
-                    'paid_at' => now(),
-                ]);
-
-                foreach ($sale->items as $item) {
-                    if (! $item->menuItem?->is_trackable) {
-                        continue;
-                    }
-
-                    $menuItem = $item->menuItem()->lockForUpdate()->first();
-
-                    if (! $menuItem?->is_trackable) {
-                        continue;
-                    }
-
-                    $before = (int) $menuItem->quantity;
-                    $after = $before + (int) $item->qty;
-
-                    $menuItem->update([
-                        'quantity' => $after,
-                        'status' => $menuItem->status === 'out_of_stock' && $after > 0 ? 'available' : $menuItem->status,
-                    ]);
-
-                    MenuItemAdjustment::create([
-                        'branch_id' => $sale->branch_id,
-                        'module_id' => $item->module_id,
-                        'menu_item_id' => $item->menu_item_id,
-                        'sale_id' => $sale->id,
-                        'performed_by' => auth()->id(),
-                        'type' => 'refund',
-                        'quantity_before' => $before,
-                        'quantity_after' => $after,
-                        'change_qty' => (int) $item->qty,
-                        'reference_no' => $sale->sale_number,
-                        'reason' => 'Refund return',
-                        'transaction_date' => now(),
+                if ($amount > (float) $sale->paid_amount) {
+                    throw ValidationException::withMessages([
+                        'refund_amount' => 'Refund cannot exceed the paid amount.',
                     ]);
                 }
 
-                SaleTableRelease::release($sale);
+                $settlement = SaleRefundSettlement::calculate(
+                    total: (float) $sale->total,
+                    paid: (float) $sale->paid_amount,
+                    refundAmount: $amount,
+                    currentStatus: $sale->status,
+                    alreadyRefunded: (float) $sale->refunded_amount,
+                );
 
-                $paid = round((float) $sale->paid_amount - $amount, 2);
-                $remaining = round((float) $sale->total - $paid, 2);
+                SalePaymentRecorder::recordRefund(
+                    sale: $sale,
+                    method: $this->refund_method,
+                    amount: $amount,
+                    userId: (int) auth()->id(),
+                    registerName: 'Auto-opened refund register',
+                    notes: $this->refund_reason ?: 'Refund for sale '.$sale->sale_number,
+                );
+
+                if ($settlement['is_full_refund']) {
+                    foreach ($sale->items as $item) {
+                        if (! $item->is_trackable) {
+                            continue;
+                        }
+
+                        $menuItem = $item->menuItem()->lockForUpdate()->first();
+
+                        if (! $menuItem) {
+                            continue;
+                        }
+
+                        $before = (float) $menuItem->quantity;
+                        $after = $before + (float) $item->qty;
+
+                        $menuItem->update([
+                            'quantity' => $after,
+                            'status' => $menuItem->status === 'out_of_stock' && $after > 0 ? 'available' : $menuItem->status,
+                        ]);
+
+                        MenuItemAdjustment::create([
+                            'branch_id' => $sale->branch_id,
+                            'module_id' => $item->module_id,
+                            'menu_item_id' => $item->menu_item_id,
+                            'sale_id' => $sale->id,
+                            'performed_by' => auth()->id(),
+                            'type' => 'refund',
+                            'quantity_before' => $before,
+                            'quantity_after' => $after,
+                            'change_qty' => (float) $item->qty,
+                            'reference_no' => $sale->sale_number,
+                            'reason' => 'Full sale refund return',
+                            'transaction_date' => now(),
+                        ]);
+                    }
+
+                    $sale->items()->update([
+                        'status' => 'cancelled',
+                        'kitchen_status' => 'completed',
+                        'kitchen_completed_at' => now(),
+                    ]);
+                    SaleTableRelease::release($sale);
+                }
 
                 $sale->update([
-                    'paid_amount' => max(0, $paid),
-                    'remaining_balance' => max(0, $remaining),
-                    'is_debt' => false,
-                    'status' => 'refunded',
+                    'total' => $settlement['total'],
+                    'paid_amount' => $settlement['paid_amount'],
+                    'refunded_amount' => $settlement['refunded_amount'],
+                    'remaining_balance' => $settlement['remaining_balance'],
+                    'is_debt' => $settlement['is_debt'],
+                    'status' => $settlement['status'],
                 ]);
 
                 if ($sale->customer) {
                     Customer::whereKey($sale->customer_id)->update([
-                        'total_spent' => DB::raw('GREATEST(COALESCE(total_spent, 0) - ' . $amount . ', 0)'),
+                        'total_spent' => DB::raw('GREATEST(COALESCE(total_spent, 0) - '.$settlement['customer_spend_reduction'].', 0)'),
                     ]);
                 }
             });
@@ -282,6 +307,8 @@ class SalesIndex extends Component
                 ->text('Refund has been recorded successfully.')
                 ->success()
                 ->show();
+        } catch (ValidationException $e) {
+            throw $e;
         } catch (Throwable $e) {
             Log::error('SalesIndex::processRefund failed', ['exception' => $e->getMessage(), 'trace' => $e->getTraceAsString(), 'refundSaleId' => $this->refundSaleId ?? null]);
             LivewireAlert::title('Error')
@@ -319,64 +346,19 @@ class SalesIndex extends Component
         }
     }
 
-    protected function openRegisterFor(Sale $sale): CashRegister
-    {
-        $moduleId = $sale->items->pluck('module_id')->filter()->first();
-        $register = CashRegister::where('branch_id', $sale->branch_id)
-            ->where('module_id', $moduleId)
-            ->where('is_open', true)
-            ->latest('opened_at')
-            ->first();
-
-        return $register ?: CashRegister::create([
-            'branch_id' => $sale->branch_id,
-            'module_id' => $moduleId,
-            'opened_by' => auth()->id(),
-            'name' => 'Auto-opened POS register',
-        ]);
-    }
-
-    protected function recordPayment(Sale $sale, CashRegister $register, string $method, float $amount, ?string $reference = null): void
-    {
-        CashRegisterTransaction::create([
-            'cash_register_id' => $register->id,
-            'branch_id' => $sale->branch_id,
-            'module_id' => $register->module_id,
-            'sale_id' => $sale->id,
-            'performed_by' => auth()->id(),
-            'type' => 'sale',
-            'amount' => $amount,
-            'notes' => 'Balance payment for sale ' . $sale->sale_number,
-            'transaction_date' => now(),
-        ]);
-
-        $register->addExpectedBalanceForTransaction('sale', $amount);
-
-        Payment::create([
-            'sale_id' => $sale->id,
-            'branch_id' => $sale->branch_id,
-            'module_id' => $register->module_id,
-            'cash_register_id' => $register->id,
-            'received_by' => auth()->id(),
-            'method' => $method,
-            'amount' => $amount,
-            'transaction_reference' => $reference,
-            'status' => 'completed',
-            'paid_at' => now(),
-        ]);
-    }
-
     protected function receiptSettings(): array
     {
-        $settings = WebsiteContent::settings();
+        return Cache::remember(PosCache::receiptSettingsKey(), now()->addMinutes(5), function () {
+            $settings = WebsiteContent::settings();
 
-        return [
-            'business_name' => $settings?->business_name ?: config('app.name', 'Cazera'),
-            'tagline' => $settings?->tagline,
-            'address' => $settings?->address,
-            'phone' => $settings?->phone,
-            'email' => $settings?->email,
-            'whatsapp' => $settings?->whatsapp,
-        ];
+            return [
+                'business_name' => $settings?->business_name ?: config('app.name', 'Cazera'),
+                'tagline' => $settings?->tagline,
+                'address' => $settings?->address,
+                'phone' => $settings?->phone,
+                'email' => $settings?->email,
+                'whatsapp' => $settings?->whatsapp,
+            ];
+        });
     }
 }

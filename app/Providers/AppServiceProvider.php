@@ -70,30 +70,36 @@ class AppServiceProvider extends ServiceProvider
         $this->registerPosCacheObservers();
         $this->registerActivityListeners();
 
-        View::composer(['components.layouts.*', 'components.layout.*'], function ($view) {
-            $user = auth()->user();
-            $branches = Schema::hasTable('branches')
-                ? ($user
-                    ? $user->accessibleBranches()->get()
-                    : Branch::where('is_active', true)->orderBy('id')->get())
-                : new Collection;
+        View::composer(['components.layout.header', 'components.layout.sidebar'], function ($view) {
+            $cacheKey = 'backoffice.layout.branch-context';
+            $context = request()->attributes->get($cacheKey);
 
-            $currentBranch = null;
-            $branchId = session('branch_id');
+            if (! $context) {
+                $user = auth()->user();
+                $hasBranches = Schema::hasTable('branches');
+                $branches = $hasBranches
+                    ? ($user
+                        ? $user->accessibleBranches()->get()
+                        : Branch::where('is_active', true)->orderBy('id')->get())
+                    : new Collection;
 
-            if ($branchId && Schema::hasTable('branches') && (! $user || $user->canAccessBranch($branchId))) {
-                $currentBranch = Branch::find($branchId);
+                $currentBranch = null;
+                $branchId = session('branch_id');
+
+                if ($branchId && $hasBranches && (! $user || $user->canAccessBranch($branchId))) {
+                    $currentBranch = $branches->firstWhere('id', (int) $branchId);
+                }
+
+                if (! $currentBranch && $branches->isNotEmpty()) {
+                    $currentBranch = $branches->first();
+                    session(['branch_id' => $currentBranch->id]);
+                }
+
+                $context = compact('branches', 'currentBranch');
+                request()->attributes->set($cacheKey, $context);
             }
 
-            if (! $currentBranch && $branches->isNotEmpty()) {
-                $currentBranch = $branches->first();
-                session(['branch_id' => $currentBranch->id]);
-            }
-
-            $view->with([
-                'branches' => $branches,
-                'currentBranch' => $currentBranch,
-            ]);
+            $view->with($context);
         });
     }
 

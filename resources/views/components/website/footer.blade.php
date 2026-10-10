@@ -3,6 +3,7 @@
     $name = $settings?->business_name ?? \App\Support\WebsiteContent::copy('brand.name', 'Cazera');
     $footerEyebrow = \App\Support\WebsiteContent::copy('footer.eyebrow', 'Hospitality showcase');
     $footerDescription = \App\Support\WebsiteContent::copy('footer.description', $settings?->tagline ?? 'Cinematic hospitality experiences across dining, lounges, events and memorable nights out.');
+    $phoneHref = \App\Support\WebsiteContent::phoneHref($settings?->phone);
     $links = [
         ['About', route('website.about')],
         ['Branches', route('website.branches')],
@@ -63,8 +64,8 @@
                     @if ($settings?->address)
                         <p>{{ $settings->address }}</p>
                     @endif
-                    @if ($settings?->phone)
-                        <p><a href="tel:{{ $settings->phone }}" class="text-gold hover:text-parchment">{{ $settings->phone }}</a></p>
+                    @if ($phoneHref)
+                        <p><a href="{{ $phoneHref }}" class="text-gold hover:text-parchment">{{ $settings->phone }}</a></p>
                     @endif
                     @if ($settings?->email)
                         <p><a href="mailto:{{ $settings->email }}" class="text-gold hover:text-parchment">{{ $settings->email }}</a></p>

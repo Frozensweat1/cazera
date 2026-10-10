@@ -22,7 +22,7 @@ class EventShow extends Component
         $event = WebsiteContent::events()->firstWhere('slug', $this->slug);
 
         if (! $event) {
-            throw new NotFoundHttpException();
+            throw new NotFoundHttpException;
         }
 
         $brand = WebsiteContent::settings()?->business_name ?: config('app.name', 'Cazera');
@@ -30,6 +30,11 @@ class EventShow extends Component
         return view('livewire.website.event-show', [
             'event' => $event,
             'events' => WebsiteContent::events()->where('slug', '!=', $this->slug),
-        ])->title($event['title'] . ' | ' . $brand);
+        ])->layoutData(WebsiteContent::seoData(
+            [],
+            $event['title'].' | '.$brand,
+            $event['description'],
+            $event['image'],
+        ));
     }
 }

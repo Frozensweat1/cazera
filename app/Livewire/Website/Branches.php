@@ -14,14 +14,15 @@ class Branches extends Component
     public function render()
     {
         $brand = WebsiteContent::settings()?->business_name ?: config('app.name', 'Cazera');
+        $page = WebsiteContent::page('branches');
         $branches = WebsiteContent::branches()
             ->filter(fn (array $branch) => blank($this->search)
-                || str($branch['name'] . ' ' . $branch['location'] . ' ' . $branch['description'])->lower()->contains(str($this->search)->lower()))
+                || str($branch['name'].' '.$branch['location'].' '.$branch['description'])->lower()->contains(str($this->search)->lower()))
             ->values();
 
         return view('livewire.website.branches', [
             'branches' => $branches,
-            'page' => WebsiteContent::page('branches'),
-        ])->title('Branches | ' . $brand);
+            'page' => $page,
+        ])->layoutData(WebsiteContent::seoData($page, 'Branches | '.$brand));
     }
 }

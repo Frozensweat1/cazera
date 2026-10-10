@@ -26,15 +26,21 @@
             <div>
                 <x-website.section-heading eyebrow="Vacancies" title="Open hospitality roles." />
                 <div class="space-y-4">
-                    @foreach ($vacancies as $vacancy)
+                    @forelse ($vacancies as $vacancy)
                         <article class="rounded-3xl border border-ivory/10 p-5">
                             <h3 class="font-serif text-2xl font-semibold text-ivory">{{ $vacancy['role'] }}</h3>
                             <p class="mt-2 text-sm text-parchment/70">{{ $vacancy['location'] }} / {{ $vacancy['type'] }}</p>
                         </article>
-                    @endforeach
+                    @empty
+                        <div class="border-l-2 border-gold py-3 pl-5">
+                            <h3 class="font-serif text-2xl font-semibold text-ivory">No roles are open right now.</h3>
+                            <p class="mt-2 text-sm text-parchment/70">New opportunities will be published here.</p>
+                        </div>
+                    @endforelse
                 </div>
             </div>
 
+            @if ($vacancies->isNotEmpty())
             <div class="rounded-[2rem] border border-ivory/10 bg-charcoal p-6 md:p-8">
                 <h2 class="font-serif text-4xl font-semibold text-ivory">Application interest</h2>
                 @if ($successMessage)
@@ -68,6 +74,16 @@
                     </x-website.button>
                 </form>
             </div>
+            @else
+                <div class="self-start border-l border-ivory/15 pl-6">
+                    <p class="eyebrow">Stay connected</p>
+                    <h2 class="mt-3 font-serif text-4xl font-semibold text-ivory">Explore the team and our branches.</h2>
+                    <div class="mt-6 flex flex-wrap gap-3">
+                        <x-website.button href="{{ route('website.about') }}">About Us</x-website.button>
+                        <x-website.button href="{{ route('website.branches') }}" variant="secondary">Our Branches</x-website.button>
+                    </div>
+                </div>
+            @endif
         </div>
     </section>
 </div>

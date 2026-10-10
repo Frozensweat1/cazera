@@ -1,7 +1,7 @@
 @props(['settings' => null])
 @php
     $wa = $settings?->whatsapp ?? $settings?->phone ?? null;
-    $waLink = $wa ? ('https://wa.me/' . preg_replace('/[^0-9]/','',$wa)) : null;
+    $waLink = \App\Support\WebsiteContent::whatsappUrl($wa);
 @endphp
 
 @if($waLink)

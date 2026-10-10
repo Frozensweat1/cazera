@@ -11,6 +11,7 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 class BranchShow extends Component
 {
     public string $slug;
+
     public string $category = 'all';
 
     public function mount(string $slug): void
@@ -23,7 +24,7 @@ class BranchShow extends Component
         $branch = WebsiteContent::branch($this->slug);
 
         if (! $branch) {
-            throw new NotFoundHttpException();
+            throw new NotFoundHttpException;
         }
 
         $categories = WebsiteContent::categories($branch['id']);
@@ -39,9 +40,14 @@ class BranchShow extends Component
             'branches' => WebsiteContent::branches()->where('slug', '!=', $branch['slug'])->take(3),
             'categories' => $categories,
             'menuItems' => $filteredItems,
-            'gallery' => WebsiteContent::gallery()->take(6),
+            'gallery' => WebsiteContent::gallery($branch['id'])->take(6),
             'testimonials' => WebsiteContent::testimonials($branch['id']),
             'reviews' => WebsiteContent::reviews($branch['id']),
-        ])->title($branch['name'] . ' | ' . $brand);
+        ])->layoutData(WebsiteContent::seoData(
+            [],
+            $branch['name'].' | '.$brand,
+            $branch['description'],
+            $branch['hero_image'],
+        ));
     }
 }

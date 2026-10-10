@@ -13,9 +13,14 @@
 
         <div x-data="{ active: null }">
             <div class="columns-1 gap-5 sm:columns-2 lg:columns-3">
-                @foreach ($items as $item)
+                @forelse ($items as $item)
                     <x-website.gallery-card :item="$item" class="mb-5 break-inside-avoid" />
-                @endforeach
+                @empty
+                    <div class="border-l-2 border-gold py-3 pl-5">
+                        <h2 class="font-serif text-3xl font-semibold text-ivory">No gallery items are published.</h2>
+                        <p class="mt-2 text-sm text-parchment/70">Fresh moments from our branches will appear here.</p>
+                    </div>
+                @endforelse
             </div>
             <template x-if="active">
                 <div class="fixed inset-0 z-[70] grid place-items-center bg-ink/92 p-4" @click.self="active = null" @keydown.escape.window="active = null">

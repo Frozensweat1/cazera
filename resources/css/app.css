@@ -42,11 +42,7 @@
 
 @layer components {
     .site-shell {
-        background:
-            linear-gradient(180deg, rgba(7, 7, 6, 0.72), #070706 42rem),
-            radial-gradient(circle at 18% 8%, rgba(200, 164, 93, 0.16), transparent 28rem),
-            radial-gradient(circle at 82% 24%, rgba(90, 31, 46, 0.2), transparent 26rem),
-            #070706;
+        background: #070706;
     }
 
     .luxury-container {

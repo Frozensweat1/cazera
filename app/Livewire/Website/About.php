@@ -13,9 +13,10 @@ class About extends Component
     public function render()
     {
         $brand = WebsiteContent::settings()?->business_name ?: config('app.name', 'Cazera');
+        $page = WebsiteContent::page('about');
 
         return view('livewire.website.about', [
-            'page' => WebsiteContent::page('about'),
+            'page' => $page,
             'branches' => WebsiteContent::branches(),
             'leaders' => StaffProfile::query()
                 ->with(['user', 'branch', 'module'])
@@ -28,7 +29,7 @@ class About extends Component
                     'name' => $profile->user?->name,
                     'role' => $profile->job_title,
                     'copy' => $profile->department
-                        ? $profile->department . ($profile->branch ? ' / ' . $profile->branch->name : '')
+                        ? $profile->department.($profile->branch ? ' / '.$profile->branch->name : '')
                         : ($profile->branch?->name ?: 'Hospitality team'),
                     'image' => $profile->user?->profile_img ? WebsiteContent::assetPath($profile->user->profile_img) : null,
                     'initials' => collect(explode(' ', $profile->user?->name ?? 'Team'))
@@ -37,6 +38,6 @@ class About extends Component
                         ->map(fn ($part) => mb_strtoupper(mb_substr($part, 0, 1)))
                         ->implode('') ?: 'ST',
                 ]),
-        ])->title('About | ' . $brand);
+        ])->layoutData(WebsiteContent::seoData($page, 'About | '.$brand));
     }
 }

@@ -22,7 +22,7 @@ class MenuItemShow extends Component
         $item = WebsiteContent::menuItem($this->slug);
 
         if (! $item) {
-            throw new NotFoundHttpException();
+            throw new NotFoundHttpException;
         }
 
         $brand = WebsiteContent::settings()?->business_name ?: config('app.name', 'Cazera');
@@ -30,6 +30,11 @@ class MenuItemShow extends Component
         return view('livewire.website.menu-item-show', [
             'item' => $item,
             'relatedItems' => WebsiteContent::randomMenuItems(8, $this->slug),
-        ])->title($item['title'] . ' | ' . $brand);
+        ])->layoutData(WebsiteContent::seoData(
+            [],
+            $item['title'].' | '.$brand,
+            $item['description'],
+            $item['image'],
+        ));
     }
 }

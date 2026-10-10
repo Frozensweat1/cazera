@@ -2,8 +2,9 @@
 
 namespace App\Livewire\Website;
 
+use App\Models\MenuItem;
+use App\Models\Module;
 use App\Support\WebsiteContent;
-use Illuminate\Pagination\LengthAwarePaginator;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 use Livewire\WithPagination;
@@ -16,8 +17,11 @@ class MenuItems extends Component
     protected $paginationTheme = 'tailwind';
 
     public string $search = '';
+
     public ?string $module = null;
+
     public int $perPage = 9;
+
     public int $page = 1;
 
     protected $queryString = [
@@ -39,36 +43,44 @@ class MenuItems extends Component
     public function render()
     {
         $brand = WebsiteContent::settings()?->business_name ?: config('app.name', 'Cazera');
+        $pageData = WebsiteContent::page('menu');
 
-        $all = WebsiteContent::menuItems(null, null)
-            ->filter(fn (array $item) => blank($this->search)
-                || str($item['title'] . ' ' . $item['description'] . ' ' . $item['category_name'] . ' ' . $item['branch'])
-                    ->lower()
-                    ->contains(str($this->search)->lower()))
-            ->values();
+        $availableStatuses = ['active', 'available', 'published'];
+        $search = trim($this->search);
 
-        if ($this->module) {
-            $all = $all->filter(fn (array $item) => ! empty($item['module']) && str($item['module'])->lower()->is(str($this->module)->lower()))->values();
-        }
+        $menuItems = MenuItem::query()
+            ->with(['category', 'branch', 'module'])
+            ->whereIn('status', $availableStatuses)
+            ->when($search !== '', fn ($query) => $query->where(function ($query) use ($search) {
+                $query->where('name', 'like', "%{$search}%")
+                    ->orWhere('description', 'like', "%{$search}%")
+                    ->orWhereHas('category', fn ($query) => $query->where('name', 'like', "%{$search}%"))
+                    ->orWhereHas('branch', fn ($query) => $query
+                        ->where('name', 'like', "%{$search}%")
+                        ->orWhere('location', 'like', "%{$search}%"));
+            }))
+            ->when($this->module, fn ($query) => $query->whereHas(
+                'module',
+                fn ($query) => $query->where('name', $this->module)
+            ))
+            ->orderBy('sort_order')
+            ->orderBy('name')
+            ->paginate($this->perPage)
+            ->through(fn (MenuItem $item) => WebsiteContent::presentMenuItem($item));
 
-        $total = $all->count();
-        $page = max(1, (int) $this->page);
-        $slice = $all->slice(($page - 1) * $this->perPage, $this->perPage)->values();
-
-        $paginator = new LengthAwarePaginator(
-            $slice,
-            $total,
-            $this->perPage,
-            $page,
-            ['path' => LengthAwarePaginator::resolveCurrentPath(), 'query' => request()->query()]
-        );
-
-        $modules = WebsiteContent::menuItems(null, null)->pluck('module')->filter()->unique()->values();
+        $modules = Module::query()
+            ->where('is_active', true)
+            ->whereIn('id', MenuItem::query()
+                ->select('module_id')
+                ->whereNotNull('module_id')
+                ->whereIn('status', $availableStatuses))
+            ->orderBy('name')
+            ->pluck('name');
 
         return view('livewire.website.menu-items', [
-            'menuItems' => $paginator,
+            'menuItems' => $menuItems,
             'modules' => $modules,
-            'pageData' => WebsiteContent::page('menu'),
-        ])->title('Menu | ' . $brand);
+            'pageData' => $pageData,
+        ])->layoutData(WebsiteContent::seoData($pageData, 'Menu | '.$brand));
     }
 }

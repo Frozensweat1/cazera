@@ -3,38 +3,60 @@
 namespace App\Livewire\Backoffice\Website;
 
 use App\Models\WebsiteSetting;
+use App\Support\WebsiteContent;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Jantinnerezo\LivewireAlert\Facades\LivewireAlert;
 use Livewire\Component;
 use Livewire\WithFileUploads;
+use Throwable;
 
 class SettingsIndex extends Component
 {
     use WithFileUploads;
 
     public $settings;
+
     public $business_name;
+
     public $tagline;
+
     public $email;
+
     public $phone;
+
     public $whatsapp;
+
     public $address;
+
     public $google_map_url;
+
     public $facebook_url;
+
     public $instagram_url;
+
     public $youtube_url;
+
     public $tiktok_url;
+
     public $x_url;
+
     public $meta_title;
+
     public $meta_description;
+
     public $content_json;
 
     public $logo;
+
     public $favicon;
+
     public $hero_background;
 
     public $logo_path;
+
     public $favicon_path;
+
     public $hero_background_path;
 
     public function mount()
@@ -74,18 +96,27 @@ class SettingsIndex extends Component
             'phone' => 'nullable|string|max:64',
             'whatsapp' => 'nullable|string|max:64',
             'address' => 'nullable|string|max:1024',
-            'google_map_url' => 'nullable|url|max:1024',
-            'facebook_url' => 'nullable|url|max:1024',
-            'instagram_url' => 'nullable|url|max:1024',
-            'youtube_url' => 'nullable|url|max:1024',
-            'tiktok_url' => 'nullable|url|max:1024',
-            'x_url' => 'nullable|url|max:1024',
-            'meta_title' => 'nullable|string|max:255',
-            'meta_description' => 'nullable|string|max:1024',
+            'google_map_url' => [
+                'nullable',
+                'url:http,https',
+                'max:1024',
+                function (string $attribute, mixed $value, \Closure $fail): void {
+                    if (filled($value) && ! WebsiteContent::isGoogleMapsEmbedUrl((string) $value)) {
+                        $fail('The map URL must be a Google Maps embed URL.');
+                    }
+                },
+            ],
+            'facebook_url' => 'nullable|url:http,https|max:1024',
+            'instagram_url' => 'nullable|url:http,https|max:1024',
+            'youtube_url' => 'nullable|url:http,https|max:1024',
+            'tiktok_url' => 'nullable|url:http,https|max:1024',
+            'x_url' => 'nullable|url:http,https|max:1024',
+            'meta_title' => 'nullable|string|max:70',
+            'meta_description' => 'nullable|string|max:180',
             'content_json' => 'nullable|string',
-            'logo' => 'nullable|file|mimes:jpg,jpeg,png,gif,webp,avif,svg|max:5120',
-            'favicon' => 'nullable|file|mimes:jpg,jpeg,png,gif,webp,avif,svg,ico|max:5120',
-            'hero_background' => 'nullable|file|mimes:jpg,jpeg,png,gif,webp,avif,svg|max:5120',
+            'logo' => 'nullable|image|mimes:jpg,jpeg,png,webp,avif|max:5120',
+            'favicon' => 'nullable|image|mimes:png|max:1024',
+            'hero_background' => 'nullable|image|mimes:jpg,jpeg,png,webp,avif|max:8192',
         ];
     }
 
@@ -108,10 +139,6 @@ class SettingsIndex extends Component
     {
         $this->validate();
 
-        if (! $this->settings) {
-            $this->settings = new WebsiteSetting();
-        }
-
         $data = [
             'business_name' => $this->business_name,
             'tagline' => $this->tagline,
@@ -132,8 +159,9 @@ class SettingsIndex extends Component
         if ($this->content_json) {
             $decoded = json_decode($this->content_json, true);
 
-            if (json_last_error() !== JSON_ERROR_NONE) {
-                $this->addError('content_json', 'Content overrides must be valid JSON.');
+            if (json_last_error() !== JSON_ERROR_NONE || ! is_array($decoded)) {
+                $this->addError('content_json', 'Content overrides must be a valid JSON object.');
+
                 return;
             }
 
@@ -142,34 +170,59 @@ class SettingsIndex extends Component
             $data['content'] = null;
         }
 
-        if ($this->logo) {
-            $data['logo'] = $this->storeFile($this->logo, 'logo');
+        $this->settings ??= new WebsiteSetting;
+        $oldFiles = $this->settings->only(['logo', 'favicon', 'hero_background']);
+        $newUploads = [];
+
+        try {
+            foreach (['logo', 'favicon', 'hero_background'] as $field) {
+                if ($this->{$field}) {
+                    $data[$field] = $this->storeFile($this->{$field}, $field);
+                    $newUploads[] = $data[$field];
+                }
+            }
+
+            $this->settings->fill($data)->save();
+
+            foreach (['logo', 'favicon', 'hero_background'] as $field) {
+                $this->deleteReplacedFile($oldFiles[$field] ?? null, $this->settings->{$field});
+            }
+
+            $this->logo_path = $this->settings->logo;
+            $this->favicon_path = $this->settings->favicon;
+            $this->hero_background_path = $this->settings->hero_background;
+            $this->reset(['logo', 'favicon', 'hero_background']);
+            WebsiteContent::flushMemoized();
+
+            LivewireAlert::title('Website Settings Saved')
+                ->text('Brand, contact and search settings are now up to date.')
+                ->success()
+                ->show();
+        } catch (Throwable $exception) {
+            foreach ($newUploads as $path) {
+                Storage::disk('public')->delete($path);
+            }
+
+            report($exception);
+            LivewireAlert::title('Settings Could Not Be Saved')
+                ->text('Please try again. If the problem continues, contact support.')
+                ->error()
+                ->show();
         }
-
-        if ($this->favicon) {
-            $data['favicon'] = $this->storeFile($this->favicon, 'favicon');
-        }
-
-        if ($this->hero_background) {
-            $data['hero_background'] = $this->storeFile($this->hero_background, 'hero_background');
-        }
-
-        $this->settings->fill($data);
-        $this->settings->save();
-
-        $this->logo_path = $this->settings->logo;
-        $this->favicon_path = $this->settings->favicon;
-        $this->hero_background_path = $this->settings->hero_background;
-
-        LivewireAlert::title('Website Settings Saved')
-            ->text('Your website settings have been updated successfully.')
-            ->success()
-            ->show();
     }
 
     protected function storeFile($file, $prefix)
     {
-        return $file->storeAs('website', sprintf('%s-%s.%s', $prefix, time(), $file->extension()), 'public');
+        return $file->storeAs('website', sprintf('%s-%s.%s', $prefix, Str::uuid(), $file->extension()), 'public');
+    }
+
+    private function deleteReplacedFile(?string $oldPath, ?string $newPath): void
+    {
+        if (! $oldPath || $oldPath === $newPath || Str::startsWith($oldPath, ['http://', 'https://'])) {
+            return;
+        }
+
+        Storage::disk('public')->delete(ltrim(Str::after($oldPath, 'storage/'), '/'));
     }
 
     public function render()

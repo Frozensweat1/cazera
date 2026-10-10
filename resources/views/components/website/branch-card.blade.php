@@ -2,7 +2,8 @@
 @php
     $phone = $branch['phone'] ?? null;
     $wa = $branch['whatsapp'] ?? $phone;
-    $waLink = $wa ? 'https://wa.me/' . preg_replace('/[^0-9]/', '', $wa) : null;
+    $phoneHref = \App\Support\WebsiteContent::phoneHref($phone);
+    $waLink = \App\Support\WebsiteContent::whatsappUrl($wa);
 @endphp
 
 <article {{ $attributes->merge(['class' => 'group overflow-hidden rounded-[1.75rem] border border-ivory/10 bg-charcoal/78']) }}>
@@ -25,8 +26,8 @@
         </div>
         <div class="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
             <x-website.button href="{{ route('website.branch.show', $branch['slug']) }}" class="px-4 py-2.5">View Branch</x-website.button>
-            @if ($phone)
-                <x-website.button href="tel:{{ $phone }}" variant="secondary" class="px-4 py-2.5">Call</x-website.button>
+            @if ($phoneHref)
+                <x-website.button href="{{ $phoneHref }}" variant="secondary" class="px-4 py-2.5">Call</x-website.button>
             @endif
             @if ($waLink)
                 <x-website.button href="{{ $waLink }}" target="_blank" variant="whatsapp" class="px-4 py-2.5">WhatsApp</x-website.button>

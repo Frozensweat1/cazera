@@ -11,11 +11,11 @@
                             <h3 class="font-serif text-2xl font-semibold text-ivory">{{ $branch['name'] }}</h3>
                             <p class="mt-1 text-sm text-parchment/70">{{ $branch['location'] }}</p>
                             <div class="mt-4 flex flex-wrap gap-2">
-                                @if ($branch['phone'])
-                                    <x-website.button href="tel:{{ $branch['phone'] }}" class="px-4 py-2.5">Call</x-website.button>
+                                @if ($phoneHref = \App\Support\WebsiteContent::phoneHref($branch['phone']))
+                                    <x-website.button href="{{ $phoneHref }}" class="px-4 py-2.5">Call</x-website.button>
                                 @endif
-                                @if ($branch['whatsapp'])
-                                    <x-website.button href="https://wa.me/{{ preg_replace('/[^0-9]/', '', $branch['whatsapp']) }}" target="_blank" variant="whatsapp" class="px-4 py-2.5">WhatsApp</x-website.button>
+                                @if ($whatsappUrl = \App\Support\WebsiteContent::whatsappUrl($branch['whatsapp']))
+                                    <x-website.button href="{{ $whatsappUrl }}" target="_blank" variant="whatsapp" class="px-4 py-2.5">WhatsApp</x-website.button>
                                 @endif
                             </div>
                         </article>
@@ -95,10 +95,10 @@
     <section class="luxury-container pb-20">
         <div class="rounded-[2rem] border border-ivory/10 bg-charcoal p-7">
             <p class="eyebrow">Map</p>
-            @if ($settings?->google_map_url)
+            @if (\App\Support\WebsiteContent::isGoogleMapsEmbedUrl($settings?->google_map_url))
                 <iframe src="{{ $settings->google_map_url }}" title="{{ \App\Support\WebsiteContent::copy('brand.name', 'Cazera') }} map" loading="lazy" class="mt-5 h-96 w-full rounded-3xl border-0"></iframe>
             @else
-                <div class="mt-5 grid h-80 place-items-center rounded-3xl bg-ivory/[0.05] p-8 text-center text-parchment/70">Add a Google Maps embed URL in website settings to show the map here.</div>
+                <div class="mt-5 grid h-80 place-items-center rounded-3xl bg-ivory/[0.05] p-8 text-center text-parchment/70">Our location map is not available right now.</div>
             @endif
         </div>
     </section>

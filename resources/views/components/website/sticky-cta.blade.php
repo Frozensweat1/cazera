@@ -2,7 +2,8 @@
 @php
     $phone = $settings?->phone ?? null;
     $wa = $settings?->whatsapp ?? $phone;
-    $waLink = $wa ? ('https://wa.me/' . preg_replace('/[^0-9]/','',$wa)) : null;
+    $phoneHref = \App\Support\WebsiteContent::phoneHref($phone);
+    $waLink = \App\Support\WebsiteContent::whatsappUrl($wa);
 @endphp
 
 <div class="fixed inset-x-0 bottom-0 z-40 block md:hidden">
@@ -13,8 +14,8 @@
                 <p class="truncate text-xs text-parchment/70">{{ \App\Support\WebsiteContent::copy('mobile_cta.subtitle', 'Call or send a WhatsApp message') }}</p>
             </div>
             <div class="flex shrink-0 items-center gap-2">
-                @if($phone)
-                    <a href="tel:{{ $phone }}" class="rounded-full bg-gold px-4 py-2 text-sm font-extrabold text-ink">Call</a>
+                @if($phoneHref)
+                    <a href="{{ $phoneHref }}" class="rounded-full bg-gold px-4 py-2 text-sm font-extrabold text-ink">Call</a>
                 @endif
                 @if($waLink)
                     <a href="{{ $waLink }}" target="_blank" rel="noopener" class="rounded-full bg-emerald-600 px-4 py-2 text-sm font-extrabold text-white">WhatsApp</a>

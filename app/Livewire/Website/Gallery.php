@@ -20,11 +20,12 @@ class Gallery extends Component
     {
         $brand = WebsiteContent::settings()?->business_name ?: config('app.name', 'Cazera');
         $items = WebsiteContent::gallery();
+        $page = WebsiteContent::page('gallery');
 
         return view('livewire.website.gallery', [
-            'page' => WebsiteContent::page('gallery'),
+            'page' => $page,
             'items' => $this->category === 'all' ? $items : $items->where('category', $this->category)->values(),
             'categories' => $items->pluck('category')->unique()->values(),
-        ])->title('Gallery | ' . $brand);
+        ])->layoutData(WebsiteContent::seoData($page, 'Gallery | '.$brand));
     }
 }

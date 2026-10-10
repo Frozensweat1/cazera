@@ -18,13 +18,19 @@ use Illuminate\Support\Str;
 
 class WebsiteContent
 {
+    private static array $memoized = [];
+
+    private static array $knownTables = [];
+
     public static function settings(): ?WebsiteSetting
     {
-        if (! Schema::hasTable('website_settings')) {
-            return null;
-        }
+        return self::memoize('settings', function () {
+            if (! self::hasTable('website_settings')) {
+                return null;
+            }
 
-        return WebsiteSetting::current();
+            return WebsiteSetting::current();
+        });
     }
 
     public static function settingContent(string $key, mixed $default = null): mixed
@@ -34,28 +40,30 @@ class WebsiteContent
 
     public static function page(string $slug, array $fallback = []): array
     {
-        $page = Schema::hasTable('website_pages')
-            ? WebsitePage::query()
-                ->where('slug', $slug)
-                ->where('is_published', true)
-                ->first()
-            : null;
+        return self::memoize('page:'.$slug, function () use ($slug, $fallback) {
+            $page = self::hasTable('website_pages')
+                ? WebsitePage::query()
+                    ->where('slug', $slug)
+                    ->where('is_published', true)
+                    ->first()
+                : null;
 
-        if (! $page) {
-            return $fallback;
-        }
+            if (! $page) {
+                return $fallback;
+            }
 
-        return array_filter([
-            'slug' => $page->slug,
-            'eyebrow' => $page->eyebrow,
-            'title' => $page->title,
-            'subtitle' => $page->subtitle,
-            'body' => $page->body,
-            'hero_image' => self::assetPath($page->hero_image),
-            'sections' => $page->sections ?? [],
-            'meta_title' => $page->meta_title,
-            'meta_description' => $page->meta_description,
-        ], fn ($value) => $value !== null && $value !== '');
+            return array_filter([
+                'slug' => $page->slug,
+                'eyebrow' => $page->eyebrow,
+                'title' => $page->title,
+                'subtitle' => $page->subtitle,
+                'body' => $page->body,
+                'hero_image' => self::assetPath($page->hero_image),
+                'sections' => $page->sections ?? [],
+                'meta_title' => $page->meta_title,
+                'meta_description' => $page->meta_description,
+            ], fn ($value) => $value !== null && $value !== '');
+        });
     }
 
     public static function copy(string $key, mixed $default = null): mixed
@@ -65,93 +73,105 @@ class WebsiteContent
 
     public static function branches(): Collection
     {
-        $fallbacks = collect(self::fallbackBranches());
+        return self::memoize('branches', function () {
+            $fallbacks = collect(self::fallbackBranches());
 
-        if (! Schema::hasTable('branches')) {
-            return $fallbacks;
-        }
+            if (! self::hasTable('branches')) {
+                return $fallbacks;
+            }
 
-        $branches = Branch::query()
-            ->where('is_active', true)
-            ->orderBy('name')
-            ->get()
-            ->map(fn (Branch $branch, int $index) => self::presentBranch($branch, $fallbacks[$index % $fallbacks->count()]));
+            $branches = Branch::query()
+                ->where('is_active', true)
+                ->orderBy('name')
+                ->get()
+                ->map(fn (Branch $branch, int $index) => self::presentBranch($branch, $fallbacks[$index % $fallbacks->count()]));
 
-        return $branches->isNotEmpty() ? $branches : $fallbacks;
+            return $branches;
+        });
     }
 
     public static function branch(string $slug): ?array
     {
-        $fallback = collect(self::fallbackBranches())->firstWhere('slug', $slug);
+        return self::memoize('branch:'.$slug, function () use ($slug) {
+            $fallback = collect(self::fallbackBranches())->firstWhere('slug', $slug);
 
-        $branch = Schema::hasTable('branches')
-            ? Branch::query()->where('slug', $slug)->where('is_active', true)->first()
-            : null;
+            $branch = self::hasTable('branches')
+                ? Branch::query()->where('slug', $slug)->where('is_active', true)->first()
+                : null;
 
-        if ($branch) {
-            return self::presentBranch($branch, $fallback ?? self::fallbackBranches()[0]);
-        }
+            if ($branch) {
+                return self::presentBranch($branch, $fallback ?? self::fallbackBranches()[0]);
+            }
 
-        return $fallback;
+            return null;
+        });
     }
 
     public static function categories(?int $branchId = null): Collection
     {
-        if (! Schema::hasTable('categories')) {
-            return collect(self::fallbackCategories());
-        }
+        return self::memoize('categories:'.($branchId ?? 'all'), function () use ($branchId) {
+            if (! self::hasTable('categories')) {
+                return collect(self::fallbackCategories());
+            }
 
-        $categories = Category::query()
-            ->where('is_active', true)
-            ->when($branchId, fn ($query) => $query->where('branch_id', $branchId))
-            ->orderBy('sort_order')
-            ->orderBy('name')
-            ->get()
-            ->map(fn (Category $category) => [
-                'id' => $category->id,
-                'slug' => $category->slug ?: Str::slug($category->name),
-                'name' => $category->name,
-                'description' => $category->description ?: 'A guest-ready selection crafted for memorable visits and easy discovery.',
-                'image' => self::assetPath($category->image_url) ?: self::menuFallbackAvatar($category->name),
-            ]);
+            $categories = Category::query()
+                ->where('is_active', true)
+                ->when($branchId, fn ($query) => $query->where('branch_id', $branchId))
+                ->orderBy('sort_order')
+                ->orderBy('name')
+                ->get()
+                ->map(fn (Category $category) => [
+                    'id' => $category->id,
+                    'slug' => $category->slug ?: Str::slug($category->name),
+                    'name' => $category->name,
+                    'description' => $category->description ?: 'A guest-ready selection crafted for memorable visits and easy discovery.',
+                    'image' => self::assetPath($category->image_url) ?: self::menuFallbackAvatar($category->name),
+                ]);
 
-        return $categories->isNotEmpty() ? $categories : collect(self::fallbackCategories());
+            return $categories;
+        });
     }
 
     public static function menuItems(?int $branchId = null, ?int $limit = 9): Collection
     {
-        if (! Schema::hasTable('menu_items')) {
-            return collect(self::fallbackMenuItems());
-        }
+        $key = sprintf('menu-items:%s:%s', $branchId ?? 'all', $limit ?? 'all');
 
-        $items = MenuItem::query()
-            ->with(['category', 'branch', 'module'])
-            ->when($branchId, fn ($query) => $query->where('branch_id', $branchId))
-            ->when(is_null($branchId) && $limit, fn ($query) => $query->limit($limit))
-            ->whereIn('status', ['active', 'available', 'published'])
-            ->orderBy('sort_order')
-            ->orderBy('name')
-            ->get()
-            ->map(fn (MenuItem $item) => self::presentMenuItem($item));
+        return self::memoize($key, function () use ($branchId, $limit) {
+            if (! self::hasTable('menu_items')) {
+                return collect(self::fallbackMenuItems());
+            }
 
-        return $items->isNotEmpty() ? $items : collect(self::fallbackMenuItems());
+            $items = MenuItem::query()
+                ->with(['category', 'branch', 'module'])
+                ->when($branchId, fn ($query) => $query->where('branch_id', $branchId))
+                ->when(is_null($branchId) && $limit, fn ($query) => $query->limit($limit))
+                ->whereIn('status', ['active', 'available', 'published'])
+                ->orderBy('sort_order')
+                ->orderBy('name')
+                ->get()
+                ->map(fn (MenuItem $item) => self::presentMenuItem($item));
+
+            return $items;
+        });
     }
 
     public static function menuItem(string $slug): ?array
     {
-        $fallback = collect(self::fallbackMenuItems())->firstWhere('slug', $slug);
+        return self::memoize('menu-item:'.$slug, function () use ($slug) {
+            $fallback = collect(self::fallbackMenuItems())->firstWhere('slug', $slug);
 
-        if (! Schema::hasTable('menu_items')) {
-            return $fallback;
-        }
+            if (! self::hasTable('menu_items')) {
+                return $fallback;
+            }
 
-        $item = MenuItem::query()
-            ->with(['category', 'branch', 'module'])
-            ->where('slug', $slug)
-            ->whereIn('status', ['active', 'available', 'published'])
-            ->first();
+            $item = MenuItem::query()
+                ->with(['category', 'branch', 'module'])
+                ->where('slug', $slug)
+                ->whereIn('status', ['active', 'available', 'published'])
+                ->first();
 
-        return $item ? self::presentMenuItem($item) : $fallback;
+            return $item ? self::presentMenuItem($item) : null;
+        });
     }
 
     public static function randomMenuItems(int $limit = 8, ?string $excludeSlug = null): Collection
@@ -173,48 +193,52 @@ class WebsiteContent
             ->get()
             ->map(fn (MenuItem $item) => self::presentMenuItem($item));
 
-        return $items->isNotEmpty() ? $items : collect(self::fallbackMenuItems())->shuffle()->take($limit)->values();
+        return $items;
     }
 
     public static function testimonials(?int $branchId = null): Collection
     {
-        if (! Schema::hasTable('testimonials')) {
-            return collect(self::fallbackTestimonials());
-        }
+        return self::memoize('testimonials:'.($branchId ?? 'all'), function () use ($branchId) {
+            if (! self::hasTable('testimonials')) {
+                return collect(self::fallbackTestimonials());
+            }
 
-        $items = Testimonial::query()
-            ->published()
-            ->when($branchId, fn ($query) => $query->where('branch_id', $branchId))
-            ->orderByDesc('is_featured')
-            ->orderBy('sort_order')
-            ->limit(8)
-            ->get()
-            ->map(fn (Testimonial $testimonial) => [
-                'name' => $testimonial->author_name,
-                'title' => $testimonial->title ?: $testimonial->company,
-                'quote' => $testimonial->quote,
-                'rating' => $testimonial->rating ?: 5,
-            ]);
+            $items = Testimonial::query()
+                ->published()
+                ->when($branchId, fn ($query) => $query->where('branch_id', $branchId))
+                ->orderByDesc('is_featured')
+                ->orderBy('sort_order')
+                ->limit(8)
+                ->get()
+                ->map(fn (Testimonial $testimonial) => [
+                    'name' => $testimonial->author_name,
+                    'title' => $testimonial->title ?: $testimonial->company,
+                    'quote' => $testimonial->quote,
+                    'rating' => $testimonial->rating ?: 5,
+                ]);
 
-        return $items->isNotEmpty() ? $items : collect(self::fallbackTestimonials());
+            return $items;
+        });
     }
 
     public static function reviews(?int $branchId = null): Collection
     {
-        if (! Schema::hasTable('reviews')) {
-            return collect();
-        }
+        return self::memoize('reviews:'.($branchId ?? 'all'), function () use ($branchId) {
+            if (! self::hasTable('reviews')) {
+                return collect();
+            }
 
-        return Review::query()
-            ->with(['branch', 'menuItem'])
-            ->approved()
-            ->when($branchId, fn ($query) => $query->where('branch_id', $branchId))
-            ->latest('approved_at')
-            ->limit(12)
-            ->get();
+            return Review::query()
+                ->with(['branch', 'menuItem'])
+                ->approved()
+                ->when($branchId, fn ($query) => $query->where('branch_id', $branchId))
+                ->latest('approved_at')
+                ->limit(12)
+                ->get();
+        });
     }
 
-    public static function gallery(): Collection
+    public static function gallery(?int $branchId = null): Collection
     {
         $fallback = collect([
             ['category' => 'ambiance', 'title' => 'Golden hour arrival', 'type' => 'image', 'image' => self::image('photo-1517248135467-4c7edcad34c4', 1200)],
@@ -228,28 +252,30 @@ class WebsiteContent
             ['category' => 'events', 'title' => 'Live music night', 'type' => 'video', 'image' => self::image('photo-1505236858219-8359eb29e329', 1200)],
         ]);
 
-        if (! Schema::hasTable('gallery_items')) {
-            return $fallback;
-        }
+        return self::memoize('gallery:'.($branchId ?? 'all'), function () use ($branchId, $fallback) {
+            if (! self::hasTable('gallery_items')) {
+                return $fallback;
+            }
 
-        $items = GalleryItem::query()
-            ->published()
-            ->with('branch')
-            ->orderByDesc('is_featured')
-            ->orderBy('sort_order')
-            ->orderByDesc('created_at')
-            ->get()
-            ->map(fn (GalleryItem $item) => [
-                'id' => $item->id,
-                'category' => $item->category,
-                'title' => $item->title,
-                'type' => $item->type,
-                'description' => $item->description,
-                'image' => self::assetPath($item->image) ?: self::image('photo-1517248135467-4c7edcad34c4', 1200),
-                'video_url' => $item->video_url,
-            ]);
+            $items = GalleryItem::query()
+                ->published()
+                ->when($branchId, fn ($query) => $query->where('branch_id', $branchId))
+                ->orderByDesc('is_featured')
+                ->orderBy('sort_order')
+                ->orderByDesc('created_at')
+                ->get()
+                ->map(fn (GalleryItem $item) => [
+                    'id' => $item->id,
+                    'category' => $item->category,
+                    'title' => $item->title,
+                    'type' => $item->type,
+                    'description' => $item->description,
+                    'image' => self::assetPath($item->image) ?: self::image('photo-1517248135467-4c7edcad34c4', 1200),
+                    'video_url' => $item->video_url,
+                ]);
 
-        return $items->isNotEmpty() ? $items : $fallback;
+            return $items;
+        });
     }
 
     public static function events(): Collection
@@ -260,33 +286,34 @@ class WebsiteContent
             ['slug' => 'seasonal-tasting-week', 'title' => 'Seasonal Tasting Week', 'date' => 'This season', 'tag' => 'Campaign', 'description' => 'A curated tasting journey across house favorites, new plates and celebratory pours.', 'image' => self::image('photo-1551218808-94e220e084d2', 1200)],
         ]);
 
-        if (! Schema::hasTable('website_events')) {
-            return $fallback;
-        }
+        return self::memoize('events', function () use ($fallback) {
+            if (! self::hasTable('website_events')) {
+                return $fallback;
+            }
 
-        $events = WebsiteEvent::query()
-            ->published()
-            ->with('branch')
-            ->where(function ($query) {
-                $query->whereNull('ends_at')
-                    ->orWhere('ends_at', '>=', now()->startOfDay());
-            })
-            ->orderByDesc('is_featured')
-            ->orderByRaw('starts_at IS NULL, starts_at ASC')
-            ->orderBy('sort_order')
-            ->get()
-            ->map(fn (WebsiteEvent $event) => [
-                'id' => $event->id,
-                'slug' => $event->slug,
-                'title' => $event->title,
-                'date' => $event->date_label ?: $event->starts_at?->format('M j, Y g:i A'),
-                'tag' => $event->tag ?: 'Event',
-                'description' => $event->description ?: Str::limit(strip_tags($event->body ?? ''), 180),
-                'body' => $event->body,
-                'image' => self::assetPath($event->image) ?: self::image('photo-1492684223066-81342ee5ff30', 1200),
-            ]);
+            $events = WebsiteEvent::query()
+                ->published()
+                ->where(function ($query) {
+                    $query->whereNull('ends_at')
+                        ->orWhere('ends_at', '>=', now()->startOfDay());
+                })
+                ->orderByDesc('is_featured')
+                ->orderByRaw('starts_at IS NULL, starts_at ASC')
+                ->orderBy('sort_order')
+                ->get()
+                ->map(fn (WebsiteEvent $event) => [
+                    'id' => $event->id,
+                    'slug' => $event->slug,
+                    'title' => $event->title,
+                    'date' => $event->date_label ?: $event->starts_at?->format('M j, Y g:i A'),
+                    'tag' => $event->tag ?: 'Event',
+                    'description' => $event->description ?: Str::limit(strip_tags($event->body ?? ''), 180),
+                    'body' => $event->body,
+                    'image' => self::assetPath($event->image) ?: self::image('photo-1492684223066-81342ee5ff30', 1200),
+                ]);
 
-        return $events->isNotEmpty() ? $events : $fallback;
+            return $events;
+        });
     }
 
     public static function careers(): Collection
@@ -297,28 +324,30 @@ class WebsiteContent
             ['role' => 'Bar & Mixology Associate', 'location' => 'Nightlife module', 'type' => 'Shift-based'],
         ]);
 
-        if (! Schema::hasTable('career_openings')) {
-            return $fallback;
-        }
+        return self::memoize('careers', function () use ($fallback) {
+            if (! self::hasTable('career_openings')) {
+                return $fallback;
+            }
 
-        $openings = CareerOpening::query()
-            ->active()
-            ->with('branch')
-            ->orderBy('sort_order')
-            ->orderBy('role')
-            ->get()
-            ->map(fn (CareerOpening $opening) => [
-                'id' => $opening->id,
-                'role' => $opening->role,
-                'slug' => $opening->slug,
-                'location' => $opening->location ?: $opening->branch?->name ?: 'All branches',
-                'type' => $opening->employment_type ?: 'Full-time',
-                'summary' => $opening->summary,
-                'description' => $opening->description,
-                'requirements' => $opening->requirements ?? [],
-            ]);
+            $openings = CareerOpening::query()
+                ->active()
+                ->with('branch')
+                ->orderBy('sort_order')
+                ->orderBy('role')
+                ->get()
+                ->map(fn (CareerOpening $opening) => [
+                    'id' => $opening->id,
+                    'role' => $opening->role,
+                    'slug' => $opening->slug,
+                    'location' => $opening->location ?: $opening->branch?->name ?: 'All branches',
+                    'type' => $opening->employment_type ?: 'Full-time',
+                    'summary' => $opening->summary,
+                    'description' => $opening->description,
+                    'requirements' => $opening->requirements ?? [],
+                ]);
 
-        return $openings->isNotEmpty() ? $openings : $fallback;
+            return $openings;
+        });
     }
 
     public static function image(string $id, int $width = 1400): string
@@ -344,7 +373,63 @@ class WebsiteContent
             return asset(ltrim($path, '/'));
         }
 
-        return asset('storage/' . ltrim($path, '/'));
+        return asset('storage/'.ltrim($path, '/'));
+    }
+
+    public static function phoneHref(?string $phone): ?string
+    {
+        $normalized = preg_replace('/[^0-9+]/', '', trim((string) $phone));
+
+        return $normalized !== '' ? 'tel:'.$normalized : null;
+    }
+
+    public static function whatsappUrl(?string $phone): ?string
+    {
+        $normalized = preg_replace('/[^0-9]/', '', trim((string) $phone));
+
+        return $normalized !== '' ? 'https://wa.me/'.$normalized : null;
+    }
+
+    public static function isGoogleMapsEmbedUrl(?string $url): bool
+    {
+        if (blank($url)) {
+            return false;
+        }
+
+        $host = Str::lower((string) parse_url($url, PHP_URL_HOST));
+        $path = Str::lower((string) parse_url($url, PHP_URL_PATH));
+        $isGoogleHost = $host === 'google.com'
+            || Str::endsWith($host, '.google.com')
+            || preg_match('/(^|\.)google\.[a-z.]+$/', $host) === 1;
+
+        return $isGoogleHost && Str::startsWith($path, '/maps/embed');
+    }
+
+    public static function seoData(array $page, string $fallbackTitle, ?string $fallbackDescription = null, ?string $fallbackImage = null): array
+    {
+        $settings = self::settings();
+        $description = $page['meta_description']
+            ?? $fallbackDescription
+            ?? $page['subtitle']
+            ?? $settings?->meta_description
+            ?? 'Explore our branches, menus, events and hospitality experiences.';
+
+        return [
+            'title' => $page['meta_title'] ?? $fallbackTitle,
+            'description' => Str::limit(trim(strip_tags((string) $description)), 180, ''),
+            'image' => $page['hero_image']
+                ?? $fallbackImage
+                ?? self::assetPath($settings?->hero_background),
+        ];
+    }
+
+    public static function flushMemoized(): void
+    {
+        self::$memoized = [];
+
+        if (app()->bound('request')) {
+            request()->attributes->remove('website.content.memoized');
+        }
     }
 
     public static function menuFallbackAvatar(string $title): string
@@ -355,7 +440,7 @@ class WebsiteContent
             ->map(fn ($part) => mb_strtoupper(mb_substr($part, 0, 1)))
             ->implode('');
 
-        return 'https://ui-avatars.com/api/?name=' . urlencode($initials ?: $title) . '&background=14110d&color=f4d58d&size=600&bold=true';
+        return 'https://ui-avatars.com/api/?name='.urlencode($initials ?: $title).'&background=14110d&color=f4d58d&size=600&bold=true';
     }
 
     public static function branchFallbackAvatar(string $name): string
@@ -366,10 +451,10 @@ class WebsiteContent
             ->map(fn ($part) => mb_strtoupper(mb_substr($part, 0, 1)))
             ->implode('');
 
-        return 'https://ui-avatars.com/api/?name=' . urlencode($initials ?: $name) . '&background=1f1a14&color=f7ead1&size=900&bold=true';
+        return 'https://ui-avatars.com/api/?name='.urlencode($initials ?: $name).'&background=1f1a14&color=f7ead1&size=900&bold=true';
     }
 
-    private static function presentMenuItem(MenuItem $item): array
+    public static function presentMenuItem(MenuItem $item): array
     {
         return [
             'id' => $item->id,
@@ -389,26 +474,59 @@ class WebsiteContent
     private static function presentBranch(Branch $branch, array $fallback): array
     {
         $settings = $branch->settings ?? [];
+        $defaultDescription = sprintf(
+            'Discover the atmosphere, menu and hospitality experience at %s.',
+            $branch->name
+        );
 
         return [
             'id' => $branch->id,
             'name' => $branch->name,
             'slug' => $branch->slug,
-            'location' => $branch->location ?? $fallback['location'],
-            'description' => $settings['description'] ?? $fallback['description'],
-            'short_description' => $settings['short_description'] ?? $fallback['short_description'],
-            'hours' => $settings['hours'] ?? $fallback['hours'],
-            'phone' => $branch->phone ?? $fallback['phone'],
+            'location' => $branch->location ?: 'Location available on request',
+            'description' => $settings['description'] ?? $defaultDescription,
+            'short_description' => $settings['short_description'] ?? $defaultDescription,
+            'hours' => $settings['hours'] ?? 'Contact the branch for opening hours',
+            'phone' => $branch->phone,
             'email' => $branch->email,
-            'whatsapp' => $settings['whatsapp'] ?? $branch->phone ?? $fallback['whatsapp'],
+            'whatsapp' => $settings['whatsapp'] ?? $branch->phone,
             'image' => self::assetPath($settings['featured_image'] ?? null) ?: self::branchFallbackAvatar($branch->name),
             'hero_image' => self::assetPath($settings['hero_image'] ?? $settings['featured_image'] ?? null) ?: ($fallback['hero_image'] ?? self::branchFallbackAvatar($branch->name)),
             'map_url' => $settings['map_url'] ?? null,
             'directions_url' => $settings['directions_url'] ?? null,
-            'tags' => $settings['tags'] ?? $fallback['tags'],
+            'tags' => $settings['tags'] ?? ['Dining', 'Hospitality'],
             'latitude' => $branch->latitude,
             'longitude' => $branch->longitude,
         ];
+    }
+
+    private static function memoize(string $key, callable $resolver): mixed
+    {
+        if (app()->bound('request')) {
+            $memoized = request()->attributes->get('website.content.memoized', []);
+
+            if (! array_key_exists($key, $memoized)) {
+                $memoized[$key] = $resolver();
+                request()->attributes->set('website.content.memoized', $memoized);
+            }
+
+            return $memoized[$key];
+        }
+
+        if (! array_key_exists($key, self::$memoized)) {
+            self::$memoized[$key] = $resolver();
+        }
+
+        return self::$memoized[$key];
+    }
+
+    private static function hasTable(string $table): bool
+    {
+        if (! array_key_exists($table, self::$knownTables)) {
+            self::$knownTables[$table] = Schema::hasTable($table);
+        }
+
+        return self::$knownTables[$table];
     }
 
     private static function fallbackBranches(): array

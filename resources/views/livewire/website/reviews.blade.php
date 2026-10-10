@@ -44,6 +44,9 @@
                         </div>
                     @endif
                     <form wire:submit.prevent="submitReview" class="mt-5 grid gap-4">
+                        <div class="hidden" aria-hidden="true">
+                            <input wire:model.defer="review_website" type="text" tabindex="-1" autocomplete="off">
+                        </div>
                         <input wire:model="reviewer_name" type="text" class="rounded-2xl border border-ivory/10 bg-ink/65 px-4 py-3 text-ivory outline-none focus:border-gold/70" placeholder="Your name">
                         @error('reviewer_name')<span class="text-sm font-bold text-red-200">{{ $message }}</span>@enderror
                         <input wire:model="email" type="email" class="rounded-2xl border border-ivory/10 bg-ink/65 px-4 py-3 text-ivory outline-none focus:border-gold/70" placeholder="Email optional">
@@ -75,6 +78,9 @@
                         </div>
                     @endif
                     <form wire:submit.prevent="submitTestimonial" class="mt-5 grid gap-4">
+                        <div class="hidden" aria-hidden="true">
+                            <input wire:model.defer="testimonial_website" type="text" tabindex="-1" autocomplete="off">
+                        </div>
                         <input wire:model="testimonial_author_name" type="text" class="rounded-2xl border border-ivory/10 bg-ink/65 px-4 py-3 text-ivory outline-none focus:border-gold/70" placeholder="Your name">
                         @error('testimonial_author_name')<span class="text-sm font-bold text-red-200">{{ $message }}</span>@enderror
                         <input wire:model="testimonial_title" type="text" class="rounded-2xl border border-ivory/10 bg-ink/65 px-4 py-3 text-ivory outline-none focus:border-gold/70" placeholder="Title optional">

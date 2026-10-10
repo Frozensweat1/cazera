@@ -2,7 +2,8 @@
     @php
         $phone = $branch['phone'] ?? null;
         $wa = $branch['whatsapp'] ?? $phone;
-        $waLink = $wa ? 'https://wa.me/' . preg_replace('/[^0-9]/', '', $wa) : null;
+        $phoneHref = \App\Support\WebsiteContent::phoneHref($phone);
+        $waLink = \App\Support\WebsiteContent::whatsappUrl($wa);
         $schema = [
             '@context' => 'https://schema.org',
             '@type' => 'Restaurant',
@@ -14,17 +15,17 @@
             'address' => [
                 '@type' => 'PostalAddress',
                 'streetAddress' => $branch['location'],
-                'addressLocality' => 'Lagos',
-                'addressCountry' => 'NG',
+                'addressLocality' => $branch['location'],
+                'addressCountry' => 'GH',
             ],
             'openingHours' => $branch['hours'],
             'servesCuisine' => ['Contemporary', 'Hospitality', 'Lounge'],
         ];
     @endphp
-    <script type="application/ld+json">@json($schema)</script>
+    <script type="application/ld+json">{!! json_encode($schema, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) !!}</script>
 
     <section class="relative flex min-h-[78svh] items-end overflow-hidden pb-14 pt-32">
-        <img src="{{ $branch['hero_image'] }}" alt="{{ $branch['name'] }}" class="absolute inset-0 h-full w-full object-cover">
+        <img src="{{ $branch['hero_image'] }}" alt="{{ $branch['name'] }}" fetchpriority="high" decoding="async" class="absolute inset-0 h-full w-full object-cover">
         <div class="absolute inset-0 bg-gradient-to-t from-ink via-ink/62 to-ink/20"></div>
         <div class="luxury-container relative">
             <x-website.breadcrumbs :items="[['label' => 'Branches', 'url' => route('website.branches')], ['label' => $branch['name']]]" class="px-0 pt-0" />
@@ -33,7 +34,7 @@
                 <h1 class="mt-4 font-serif text-6xl font-semibold leading-[0.95] text-ivory md:text-8xl">{{ $branch['name'] }}</h1>
                 <p class="mt-6 max-w-2xl text-lg leading-8 text-parchment/82">{{ $branch['description'] }}</p>
                 <div class="mt-8 flex flex-col gap-3 sm:flex-row">
-                    @if ($phone)<x-website.button href="tel:{{ $phone }}">Call Branch</x-website.button>@endif
+                    @if ($phoneHref)<x-website.button href="{{ $phoneHref }}">Call Branch</x-website.button>@endif
                     @if ($waLink)<x-website.button href="{{ $waLink }}" target="_blank" variant="whatsapp">WhatsApp</x-website.button>@endif
                     @if ($branch['directions_url'])<x-website.button href="{{ $branch['directions_url'] }}" target="_blank" variant="secondary">Directions</x-website.button>@endif
                 </div>
@@ -54,7 +55,7 @@
             <div class="glass-panel rounded-[1.5rem] p-6">
                 <p class="eyebrow">Contact</p>
                 <div class="mt-4 space-y-2 text-parchment/78">
-                    @if ($phone)<p><a href="tel:{{ $phone }}" class="text-gold">{{ $phone }}</a></p>@endif
+                    @if ($phoneHref)<p><a href="{{ $phoneHref }}" class="text-gold">{{ $phone }}</a></p>@endif
                     @if ($branch['email'])<p><a href="mailto:{{ $branch['email'] }}" class="text-gold">{{ $branch['email'] }}</a></p>@endif
                     <p>{{ $branch['location'] }}</p>
                 </div>
@@ -72,13 +73,18 @@
                 @endforeach
             </div>
             <div class="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
-                @foreach ($menuItems as $item)
+                @forelse ($menuItems as $item)
                     <x-website.menu-card :item="$item" class="bg-ink text-ivory" />
-                @endforeach
+                @empty
+                    <div class="border-l-2 border-earth py-3 pl-5 md:col-span-2 xl:col-span-4">
+                        <p class="font-serif text-2xl font-semibold">No menu items are published for this selection.</p>
+                    </div>
+                @endforelse
             </div>
         </div>
     </section>
 
+    @if ($gallery->isNotEmpty())
     <section class="luxury-container py-20">
         <x-website.section-heading eyebrow="Gallery" title="A closer look at the room, plate and mood." />
         <div x-data="{ active: null }" class="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
@@ -100,6 +106,7 @@
             </template>
         </div>
     </section>
+    @endif
 
     <section class="luxury-container py-20">
         <div class="grid gap-10 lg:grid-cols-[0.85fr_1.15fr]">
@@ -110,7 +117,11 @@
                         <article class="rounded-3xl border border-ivory/10 p-5">
                             <div class="flex items-center justify-between gap-4">
                                 <p class="font-bold text-ivory">{{ $review->reviewer_name }}</p>
-                                <p class="text-gold">{{ str_repeat('★', $review->rating) }}</p>
+                                <div class="flex text-gold" aria-label="{{ $review->rating }} out of 5 stars">
+                                    @for ($star = 1; $star <= 5; $star++)
+                                        <x-heroicon-s-star class="h-4 w-4 {{ $star > $review->rating ? 'opacity-25' : '' }}" />
+                                    @endfor
+                                </div>
                             </div>
                             <p class="mt-3 text-sm leading-7 text-parchment/72">{{ $review->review }}</p>
                         </article>
@@ -131,10 +142,10 @@
         <div class="grid gap-6 lg:grid-cols-[1fr_1fr]">
             <div class="rounded-[2rem] border border-ivory/10 bg-charcoal p-7">
                 <p class="eyebrow">Map</p>
-                @if ($branch['map_url'])
+                @if (\App\Support\WebsiteContent::isGoogleMapsEmbedUrl($branch['map_url']))
                     <iframe src="{{ $branch['map_url'] }}" title="{{ $branch['name'] }} map" loading="lazy" class="mt-5 h-80 w-full rounded-3xl border-0"></iframe>
                 @else
-                    <div class="mt-5 grid h-80 place-items-center rounded-3xl bg-ivory/[0.05] p-8 text-center text-parchment/70">Map embed can be added through branch settings.</div>
+                    <div class="mt-5 grid h-80 place-items-center rounded-3xl bg-ivory/[0.05] p-8 text-center text-parchment/70">Location map is not available right now.</div>
                 @endif
             </div>
             <div>
@@ -152,7 +163,7 @@
     </section>
 
     <x-website.cta-section title="Visit {{ $branch['name'] }}." subtitle="Call, WhatsApp or get directions when the mood is right." :image="$branch['image']">
-        @if ($phone)<x-website.button href="tel:{{ $phone }}">Call Now</x-website.button>@endif
+        @if ($phoneHref)<x-website.button href="{{ $phoneHref }}">Call Now</x-website.button>@endif
         @if ($waLink)<x-website.button href="{{ $waLink }}" target="_blank" variant="whatsapp">WhatsApp</x-website.button>@endif
     </x-website.cta-section>
 </div>

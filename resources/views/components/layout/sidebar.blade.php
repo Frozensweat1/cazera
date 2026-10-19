@@ -16,7 +16,7 @@
         request()->routeIs('backoffice.customers', 'backoffice.customers.*') => 'customers',
         request()->routeIs('backoffice.categories', 'backoffice.menu-items', 'backoffice.menu-item-adjustments', 'backoffice.menu-item-stock-requests') => 'menu_products',
         request()->routeIs('backoffice.inventory-*', 'backoffice.stock-*', 'backoffice.suppliers', 'backoffice.purchase-order-requests') => 'inventory',
-        request()->routeIs('backoffice.pos', 'backoffice.pos.kitchen') => 'pos',
+        request()->routeIs('backoffice.pos', 'backoffice.pos.quick', 'backoffice.pos.kitchen') => 'pos',
         request()->routeIs('backoffice.pos.*') => 'sales',
         request()->routeIs('backoffice.daily-production-costs', 'backoffice.expense-categories', 'backoffice.expenses', 'backoffice.net-revenue') => 'production',
         request()->routeIs('backoffice.maintenance.*') => 'maintenance',
@@ -340,7 +340,8 @@
                             <ul x-cloak="" x-show="activeDropdown === 'pos'" x-collapse=""
                                 class="sub-menu text-gray-500">
                                 @if ($canAccessPos)
-                                    <li><a href="{{ route('backoffice.pos') }}" @class(['active' => request()->routeIs('backoffice.pos')])>POS</a></li>
+                                    <li><a href="{{ route('backoffice.pos') }}" @class(['active' => request()->routeIs('backoffice.pos')])>Standard POS</a></li>
+                                    <li><a href="{{ route('backoffice.pos.quick') }}" @class(['active' => request()->routeIs('backoffice.pos.quick')])>Quick POS</a></li>
                                 @endif
                                 @if ($canAccessKitchenDisplay)
                                     <li><a href="{{ route('backoffice.pos.kitchen') }}" @class(['active' => request()->routeIs('backoffice.pos.kitchen')])>Kitchen Display</a></li>

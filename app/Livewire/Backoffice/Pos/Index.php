@@ -744,6 +744,40 @@ class Index extends Component
 
     public function saveSale()
     {
+        if ($this->requiresSaleConfirmation()) {
+            $paymentMethods = collect($this->splitPayments)
+                ->pluck('method')
+                ->filter(fn ($method) => $method !== 'credit_sale')
+                ->unique()
+                ->map(fn ($method) => str($method)->replace('_', ' ')->title())
+                ->join(', ');
+
+            LivewireAlert::title('Confirm Sale')
+                ->text('Process this sale with '.$paymentMethods.'?')
+                ->asConfirm()
+                ->onConfirm('confirmSale')
+                ->show();
+
+            return;
+        }
+
+        $this->processSale();
+    }
+
+    public function confirmSale(): void
+    {
+        $this->processSale();
+    }
+
+    protected function requiresSaleConfirmation(): bool
+    {
+        return collect($this->splitPayments)->contains(
+            fn ($payment) => ($payment['method'] ?? 'cash') !== 'credit_sale'
+        );
+    }
+
+    protected function processSale(): void
+    {
         $branchId = session('branch_id');
         $this->authorizeBranch($branchId);
 

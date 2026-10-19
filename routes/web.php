@@ -32,6 +32,7 @@ use App\Livewire\Backoffice\NetRevenue\Index as NetRevenueIndex;
 use App\Livewire\Backoffice\Pos\DebtorsIndex as PosDebtorsIndex;
 use App\Livewire\Backoffice\Pos\Index as PosIndex;
 use App\Livewire\Backoffice\Pos\KitchenIndex as PosKitchenIndex;
+use App\Livewire\Backoffice\Pos\QuickIndex as PosQuickIndex;
 use App\Livewire\Backoffice\Pos\RefundsIndex as PosRefundsIndex;
 use App\Livewire\Backoffice\Pos\SalesIndex as PosSalesIndex;
 use App\Livewire\Backoffice\Pos\SplitPaymentsIndex as PosSplitPaymentsIndex;
@@ -279,6 +280,9 @@ Route::get('permissions', PermissionsIndex::class)
 Route::get('pos', PosIndex::class)
     ->middleware('role:Super Admin|Branch Manager|POS Operator')
     ->name('backoffice.pos');
+Route::get('pos/quick', PosQuickIndex::class)
+    ->middleware('role:Super Admin|Branch Manager|POS Operator')
+    ->name('backoffice.pos.quick');
 Route::get('pos/sales', PosSalesIndex::class)
     ->middleware('role:Super Admin|Branch Manager|Accountant')
     ->name('backoffice.pos.sales');

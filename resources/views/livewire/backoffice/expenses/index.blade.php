@@ -19,7 +19,7 @@
                 </x-ui.select>
                 <x-ui.select name="filterModule" wire:model="filterModule">
                     <option value="">All Modules</option>
-                    @foreach ($modules as $module)
+                    @foreach ($filterModules as $module)
                         <option value="{{ $module->id }}">{{ $module->name }}</option>
                     @endforeach
                 </x-ui.select>
@@ -95,21 +95,21 @@
 
             <div class="space-y-5">
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <x-ui.select label="Branch" name="branch_id" wire:model="branch_id">
+                    <x-ui.select label="Branch" name="branch_id" wire:model.live="branch_id">
                         <option value="">Select Branch</option>
                         @foreach ($branches as $branch)
                             <option value="{{ $branch->id }}">{{ $branch->name }}</option>
                         @endforeach
                     </x-ui.select>
-                    <x-ui.select label="Module" name="module_id" wire:model="module_id">
+                    <x-ui.select label="Module" name="module_id" wire:model.live="module_id">
                         <option value="">Select Module</option>
-                        @foreach ($modules as $module)
+                        @foreach ($formModules as $module)
                             <option value="{{ $module->id }}">{{ $module->name }}</option>
                         @endforeach
                     </x-ui.select>
                     <x-ui.select label="Category" name="expense_category_id" wire:model="expense_category_id">
                         <option value="">Select Category</option>
-                        @foreach ($categories as $category)
+                        @foreach ($formCategories as $category)
                             <option value="{{ $category->id }}">{{ $category->name }}</option>
                         @endforeach
                     </x-ui.select>

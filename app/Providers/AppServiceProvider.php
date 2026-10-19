@@ -43,6 +43,7 @@ use App\Models\WebsiteSetting;
 use App\Observers\AuditableObserver;
 use App\Observers\PosCacheObserver;
 use App\Support\AuditLogger;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Auth\Events\Login;
 use Illuminate\Auth\Events\Logout;
 use Illuminate\Support\Collection;
@@ -50,6 +51,10 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
+use Jantinnerezo\LivewireAlert\Facades\LivewireAlert;
+use Livewire\Component;
+use Livewire\Livewire;
+use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -69,6 +74,7 @@ class AppServiceProvider extends ServiceProvider
         $this->registerAuditObservers();
         $this->registerPosCacheObservers();
         $this->registerActivityListeners();
+        $this->registerLivewireAuthorizationNotifications();
 
         View::composer(['components.layout.header', 'components.layout.sidebar'], function ($view) {
             $cacheKey = 'backoffice.layout.branch-context';
@@ -100,6 +106,29 @@ class AppServiceProvider extends ServiceProvider
             }
 
             $view->with($context);
+        });
+    }
+
+    private function registerLivewireAuthorizationNotifications(): void
+    {
+        Livewire::listen('exception', function ($target, \Throwable $exception, callable $stopPropagation): void {
+            if (! $target instanceof Component || ! str_starts_with($target::class, 'App\\Livewire\\Backoffice\\')) {
+                return;
+            }
+
+            $isForbidden = $exception instanceof AuthorizationException
+                || ($exception instanceof HttpExceptionInterface && $exception->getStatusCode() === 403);
+
+            if (! $isForbidden) {
+                return;
+            }
+
+            LivewireAlert::title('Access Denied')
+                ->text('You do not have permission to perform this action.')
+                ->error()
+                ->show();
+
+            $stopPropagation();
         });
     }
 

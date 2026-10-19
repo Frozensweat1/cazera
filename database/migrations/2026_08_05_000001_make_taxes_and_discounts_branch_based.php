@@ -147,6 +147,10 @@ return new class extends Migration
 
     private function dropForeignIfExists(string $table, string $foreignKey): void
     {
+        if (! in_array(DB::getDriverName(), ['mysql', 'mariadb'])) {
+            return;
+        }
+
         $exists = DB::table('information_schema.table_constraints')
             ->whereRaw('constraint_schema = database()')
             ->where('table_name', $table)

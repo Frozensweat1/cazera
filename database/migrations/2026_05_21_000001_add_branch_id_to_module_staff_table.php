@@ -23,10 +23,15 @@ return new class extends Migration
             }
         });
 
-        DB::table('module_staff')
-            ->join('modules', 'module_staff.module_id', '=', 'modules.id')
-            ->whereNull('module_staff.branch_id')
-            ->update(['module_staff.branch_id' => DB::raw('modules.branch_id')]);
+        $moduleBranches = DB::table('modules')->pluck('branch_id', 'id');
+        foreach ($moduleBranches as $moduleId => $branchId) {
+            if ($branchId !== null) {
+                DB::table('module_staff')
+                    ->where('module_id', $moduleId)
+                    ->whereNull('branch_id')
+                    ->update(['branch_id' => $branchId]);
+            }
+        }
 
         if (Schema::hasColumn('module_staff', 'branch_id')) {
             Schema::table('module_staff', function (Blueprint $table) {

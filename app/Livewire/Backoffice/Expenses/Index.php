@@ -5,6 +5,7 @@ namespace App\Livewire\Backoffice\Expenses;
 use App\Livewire\Concerns\HasBranchScope;
 use App\Models\Expense;
 use App\Models\ExpenseCategory;
+use App\Models\Module;
 use Livewire\Component;
 use Livewire\WithPagination;
 use Jantinnerezo\LivewireAlert\Facades\LivewireAlert;
@@ -44,6 +45,14 @@ class Index extends Component
 
     public function render()
     {
+        $formModules = auth()->user()?->isSuperAdmin()
+            ? Module::query()
+                ->where('is_active', true)
+                ->when($this->branch_id, fn ($query) => $query->where('branch_id', $this->branch_id))
+                ->orderBy('name')
+                ->get()
+            : ($this->branch_id ? $this->accessibleModules((int) $this->branch_id) : collect());
+
         return view('livewire.backoffice.expenses.index', [
             'expenses' => Expense::with(['branch', 'module', 'category', 'recorder', 'locker'])
                 ->accessible()
@@ -55,11 +64,19 @@ class Index extends Component
                 ->latest()
                 ->paginate(10),
             'branches' => $this->accessibleBranches(),
-            'modules' => $this->accessibleModules($this->filterBranch ?: $this->branch_id ?: null),
+            'filterModules' => $this->accessibleModules($this->filterBranch ?: null),
+            'formModules' => $formModules,
             'categories' => ExpenseCategory::accessible()
                 ->where('is_active', true)
                 ->when($this->filterBranch, fn($query) => $query->where('branch_id', $this->filterBranch))
                 ->when($this->filterModule, fn($query) => $query->where('module_id', $this->filterModule))
+                ->orderBy('name')
+                ->get(),
+            'formCategories' => ExpenseCategory::query()
+                ->where('is_active', true)
+                ->when($this->branch_id, fn ($query) => $query->where('branch_id', $this->branch_id))
+                ->when($this->module_id, fn ($query) => $query->where('module_id', $this->module_id))
+                ->accessible()
                 ->orderBy('name')
                 ->get(),
             'canManageLocks' => $this->canManageLocks(),
@@ -75,6 +92,11 @@ class Index extends Component
     public function updatedBranchId()
     {
         $this->module_id = '';
+        $this->expense_category_id = '';
+    }
+
+    public function updatedModuleId(): void
+    {
         $this->expense_category_id = '';
     }
 
@@ -104,7 +126,12 @@ class Index extends Component
     {
         $this->validate();
         $this->authorizeBranch($this->branch_id);
-        $this->authorizeModule($this->module_id, $this->branch_id);
+        $module = Module::query()->findOrFail($this->module_id);
+        abort_unless((int) $module->branch_id === (int) $this->branch_id, 403);
+
+        if (! auth()->user()?->isSuperAdmin()) {
+            $this->authorizeModule($this->module_id, $this->branch_id);
+        }
 
         $category = ExpenseCategory::accessible()->findOrFail($this->expense_category_id);
         abort_unless((int) $category->branch_id === (int) $this->branch_id && (int) $category->module_id === (int) $this->module_id, 403);

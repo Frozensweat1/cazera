@@ -426,6 +426,7 @@ class WebsiteContent
     public static function flushMemoized(): void
     {
         self::$memoized = [];
+        self::$knownTables = [];
 
         if (app()->bound('request')) {
             request()->attributes->remove('website.content.memoized');

@@ -1,10 +1,16 @@
 <div>
     <div class="space-y-6">
-        <div class="flex items-center justify-between">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
                 <h1 class="text-2xl font-bold">Point of Sale</h1>
                 <p class="text-gray-500">Create orders by module, register customers quickly, and monitor the latest
                     sales.</p>
+            </div>
+            <div>
+                <a href="{{ route('backoffice.pos.quick') }}" class="btn btn-outline-primary inline-flex items-center gap-2">
+                    <span class="text-base">⚡</span>
+                    <span>Switch to Quick POS</span>
+                </a>
             </div>
         </div>
 
